@@ -1,4 +1,4 @@
-# Benchmarks: what we measured and how to reproduce it
+# Benchmarks: measurements and reproduction
 
 Every number in the README traces to a JSON file in [`benchmarks/`](../benchmarks/). This page gives the commands. Hardware used: RTX 4090 D (sm_89), torch 2.6.0+cu124, Triton 3.2.0.
 
@@ -6,7 +6,7 @@ Every number in the README traces to a JSON file in [`benchmarks/`](../benchmark
 
 - Timing: CUDA events, warm-up runs before measurement, medians reported; end-to-end runs use full videos.
 - Every claim has three levels of evidence: op-level parity JSON → block-level A/B → end-to-end time + quality gate.
-- Negative results are kept (`*_triton_bench`, falsified paths) — they're the reason some code *doesn't* exist.
+- Negative results are kept (`*_triton_bench`) — they document why some paths were rejected.
 
 ## End-to-end A/B (the headline table)
 
@@ -32,7 +32,7 @@ Reference results (same session, RTX 4090 D): `headtohead_orig.json` 7749/8468/8
 | RoPE fusion | `python fused_rope_bench.py` | `fused_rope_bench.json` | 6.6–14× per instance |
 | AdaLN fusion | `python fused_adaln_bench.py` then `fused_adaln_block_smoke.py` | `fused_adaln_bench.json` | 2.0–3.1×, gate bitwise |
 | FP8 GEMM (cuBLASLt) | `python fp8_gemm_bench.py` | `fp8_gemm_bench.json` | 2.07× @M=18k |
-| Triton FP8 GEMM (**falsified**) | `python fp8_gemm_triton_bench.py` | `fp8_gemm_triton_bench.json` | 188–205 TF < cuBLASLt |
+| Triton FP8 GEMM (rejected) | `python fp8_gemm_triton_bench.py` | `fp8_gemm_triton_bench.json` | 188–205 TF < cuBLASLt |
 | FFN GELU→FP8 | `python fp8_ffn_bench.py` | `fp8_ffn_bench.json` | codes bitwise-identical |
 | LCSA vs official BSA | `python bsa_compare.py` | `bsa_compare.json` | ±3% TF, allclose |
 | TCDecoder layouts | `python tcdec_bench.py` | `tcdec_bench.json` | channels_last −16.7%, bitwise |

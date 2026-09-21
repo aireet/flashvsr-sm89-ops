@@ -82,6 +82,6 @@ else:                            # [0,1]
 frames = out.clamp(0, 255).round().numpy().astype("uint8")
 ```
 
-Do **not** guess the range with a bare `if out.max() > 1.5: out /= 255` heuristic: `[-1,1]` slips past it, and `clamp(0,1)` then crushes the entire dark half of every frame to black. This exact bug shipped in our demo exporter once — the quality gate still "passed" because reference and candidate were crushed identically. If you have an A/B-style check, validate its shared preprocessing once against a known-good external reference.
+Do **not** guess the range with a bare `if out.max() > 1.5: out /= 255` heuristic: `[-1,1]` slips past it, and `clamp(0,1)` then crushes the entire dark half of every frame to black. If you run an A/B-style quality check, both sides share the saving path — a range bug there cancels out and the gate still passes. Validate the saving path once against a known-good external reference.
 
 Note: the operators in this pack are numerics-preserving (bitwise or ≤2 bf16 ulp vs eager), so they never change this contract — the range is set by the FlashVSR pipeline itself.

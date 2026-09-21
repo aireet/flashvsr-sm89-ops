@@ -2,7 +2,7 @@
 
 Drop-in operator pack that runs [FlashVSR v1.1 (Tiny)](https://github.com/OpenImagingLab/FlashVSR) at **~1.3× on a single RTX 4090**, with **lower peak VRAM** and a measured, gated quality budget.
 
-It packages five kernels/operators developed for the sm_89 (Ada) generation — two fused bf16 Triton pairs (attention input path, AdaLN path), FP8 E4M3 linears via cuBLASLt, a fused GELU→FP8 quantizer, plus a Triton block-sparse attention kernel that matches the official CUDA BSA kernel within noise — and the benchmark harnesses that justify every number below.
+It packages five operators for the sm_89 (Ada) generation — fused RMSNorm+RoPE, fused AdaLN (LN+modulate / gate+add), FP8 E4M3 linears via cuBLASLt, a fused GELU→FP8 FFN mid-section, and channels_last/compile handling for the TCDecoder — plus a Triton block-sparse attention kernel matching the official CUDA BSA kernel within noise, and the benchmark data behind every number below.
 
 ## Results
 
@@ -63,7 +63,7 @@ z = fused_gate_add(x, scale, x)          # x + gate * residual, bitwise-identica
 x8, s = quantize_fp8(x)                  # fused absmax + E4M3 cast, (fp8, per-tensor scale)
 ```
 
-Wiring into the FlashVSR pipeline (env-flag controlled, all default-on after gating) is a ~40-line patch to the inference entry point — see [`docs/integration.md`](docs/integration.md). Per-kernel API, numerics contracts, and the wiring gotchas we hit: [`docs/kernels.md`](docs/kernels.md). Reproducing every number: [`docs/benchmarks.md`](docs/benchmarks.md).
+Wiring into the FlashVSR pipeline (env-flag controlled, all default-on after gating) is a ~40-line patch to the inference entry point — see [`docs/integration.md`](docs/integration.md). Per-kernel API and numerics contracts: [`docs/kernels.md`](docs/kernels.md). Reproducing every number: [`docs/benchmarks.md`](docs/benchmarks.md).
 
 ## What's inside
 
@@ -76,23 +76,23 @@ Wiring into the FlashVSR pipeline (env-flag controlled, all default-on after gat
 | `TCDecoder channels_last` (+ optional MemBlock `torch.compile`) | NCHW decoder convs | **−16.7%** decode, bitwise-identical; compile adds 1.06× (+0.95 GiB) | [`benchmarks/tcdec_bench.json`](benchmarks/tcdec_bench.json) |
 | `lcsa/` Triton block-sparse attention | official CUDA BSA kernel (sm_80 compat build) | **parity: 104–116 vs 101–119 TF**, max diff ≤ 1e-3, allclose | [`benchmarks/bsa_compare.json`](benchmarks/bsa_compare.json) |
 
-The LCSA kernel is shipped as a validated drop-in *alternative* (it removed our build dependency on the external CUDA package and documents the exact layout contract), not as the source of the speedup — the official kernel is already at ~78% of achievable throughput on this chip.
+The LCSA kernel is a validated drop-in *alternative* to the official CUDA kernel (which already runs at ~78% of achievable throughput on this chip), not the source of the speedup.
 
 ## Correctness discipline
 
-Every operator in this pack passed a three-level gate before integration, and the harnesses ship with it:
+Every operator passed a three-level gate before integration:
 
-1. **Op-level parity** vs the eager reference — bitwise where reachable (`gate_add`, GELU→FP8 codes, channels_last), else bounded (≤ 1–2 bf16 ulp for fused norms).
-2. **Block-level A/B** through a real `DiTBlock` (this is what catches wiring bugs op-level benches can't — see `docs/kernels.md` § "argument order").
+1. **Op-level parity** vs the eager reference — bitwise where reachable (`gate_add`, GELU→FP8 codes, channels_last), else ≤ 1–2 bf16 ulp (fused norms).
+2. **Block-level A/B** through a real `DiTBlock` — catches wiring bugs op-level benches cannot.
 3. **End-to-end quality gate** — full videos vs official outputs, LPIPS ≤ 0.05 and PSNR reported ([`benchmarks/quality_cmp.json`](benchmarks/quality_cmp.json)).
 
-## Known limits (measured, not guessed)
+## Known limits
 
 - Numbers are for the pinned 1408×768 / 1-step pipeline above; other resolutions shift the GEMM M-dimension and the FP8 speedups (see the M=18k vs M=55k rows).
-- A custom Triton FP8 GEMM was **falsified** (188–205 TF vs cuBLASLt's 204–300 TF) — `torch._scaled_mm` stays the backend.
-- CUDA Graphs were **falsified** for this pipeline (launch gaps < 2% of wall).
-- Conv rewrites (Winograd) were **falsified** — full-res decoder convs sit at the memory-bandwidth wall, where extra FLOPs buy nothing.
-- Raw JSON in [`benchmarks/`](benchmarks/); the negative results are kept deliberately.
+- A custom Triton FP8 GEMM measured 188–205 TF vs cuBLASLt's 204–300 TF — `torch._scaled_mm` stays the backend.
+- CUDA Graphs: launch gaps are < 2% of wall for this pipeline; not worth the integration complexity.
+- Conv rewrites (Winograd): full-res decoder convs sit at the memory-bandwidth wall; extra FLOPs buy nothing.
+- Raw JSON in [`benchmarks/`](benchmarks/).
 
 ## Acknowledgments & license
 

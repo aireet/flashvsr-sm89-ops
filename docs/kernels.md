@@ -1,6 +1,6 @@
 # Kernel reference
 
-API, numerics contracts, and the integration gotchas that cost us debugging time. All signatures below are the real ones in `flashvsr_sm89_ops/`.
+API and numerics contracts. All signatures below are the real ones in `flashvsr_sm89_ops/`.
 
 Everything assumes bf16 activations on CUDA, contiguous tensors, and inference (all converted params are `requires_grad=False`).
 
@@ -28,8 +28,8 @@ fused_ln_modulate(x, scale, shift, eps=1e-6)   # = LayerNorm(x) * (1+scale) + sh
 fused_gate_add(x, gate, residual)              # = x + gate * residual
 ```
 
-- ⚠️ **Argument order: `scale` BEFORE `shift`.** The upstream `modulate()` convention is `(shift, scale)`; our wrapper takes `(scale, shift)`. This exact swap produced a 0.07 max-diff block A/B failure that looked like a numerics bug. If your block A/B diverges, check wiring before checking math.
-- **Numerics**: the kernel replicates eager's per-op bf16 rounding chain (`bf16(LN) → ×(1+s) → bf16`), which makes `fused_gate_add` **bitwise identical** (max diff 0.0 at L=8448 and 18432) and `fused_ln_modulate` 1-ulp noise. A "cleaner" fp32 single-round version fails parity — don't "fix" the rounding.
+- ⚠️ **Argument order: `scale` BEFORE `shift`.** The upstream `modulate()` convention is `(shift, scale)`. A reversed call order surfaces as a block A/B divergence that looks like a numerics bug — check wiring first.
+- **Numerics**: the kernel replicates eager's per-op bf16 rounding chain (`bf16(LN) → ×(1+s) → bf16`), which makes `fused_gate_add` **bitwise identical** (max diff 0.0 at L=8448 and 18432) and `fused_ln_modulate` 1-ulp noise. A single fp32 rounding fails parity.
 - **Measured**: LN 2.23–3.12×, gate 2.0–1.68× per instance; up to 2551 GB/s. ≈ −60 ms per full video across 30 blocks × 4 sites.
 - `fused_gate_add` uses a flat 1D grid with param indexing `p = (idx // LD) * D + idx % D` (BLOCK=4096); `fused_ln_modulate` uses one program per row with `BLOCK = next_power_of_2(D)` — the reduction dim is a `constexpr`, never autotuned.
 
@@ -42,7 +42,7 @@ lin = FP8Linear(nn.Linear(K, N))                 # wraps a bf16 Linear: static w
 n = convert_linears_fp8(model, parts=("ffn", "self", "cross"))
 ```
 
-- Backend is `torch._scaled_mm` (cuBLASLt) with per-tensor scales — the only mode torch 2.6 supports on sm_89, and the fastest we measured. We wrote and **falsified** an autotuned Triton FP8 GEMM: 188–205 TF vs cuBLASLt's 204–300 TF across the (M,K,N) shapes this pipeline hits. Don't rebuild it; see `benchmarks/fp8_gemm_bench.json`.
+- Backend is `torch._scaled_mm` (cuBLASLt) with per-tensor scales — the only mode torch 2.6 supports on sm_89. An autotuned Triton FP8 GEMM measured 188–205 TF vs cuBLASLt's 204–300 TF on this pipeline's shapes; the data is in `benchmarks/fp8_gemm_bench.json`.
 - **Scales**: weights static (calibrated once at conversion), activations dynamic (absmax per call). Measured GEMM speedup 2.07× at M=18432 (276–292 TF), 1.35–1.41× at M=55296 (~204 TF). Attention and norms stay bf16.
 - `convert_linears_fp8` matches submodules by name (`ffn`/`self`/`cross`); it returns the number of converted linears.
 - **Gotcha**: if the host model wraps modules (e.g. `enable_vram_management` wraps norms as `AutoWrappedModule`), unwrap via `getattr(m, "module", m)` before touching `.weight`/`.eps`. `FP8Linear` *subclasses* `nn.Linear`, so it survives such wrappers — the norm/eps paths are the ones that break.
@@ -64,7 +64,7 @@ Replaces the FFN `Sequential` with a module that runs: quantize input → `_scal
 
 Validated alternative to the official CUDA BSA kernel: 104–116 TF vs 101–119 TF (±3%, same keep masks), max diff ≤ 1e-3, allclose on all tested (Nq, Nk, density) points.
 
-- **Layout contract — read this first**: input is in *window order* `[1, N_win*128, H*D]`, i.e. after `WindowPartition3D`. The 128 tokens of a window are strided across raster order, not contiguous. Every "wrong output" we ever hit was a window-vs-raster assumption, not a math bug. `debug_lcsa.py` does three-way bisection (kernel / reference / torch-CSR).
+- **Layout contract**: input is in *window order* `[1, N_win*128, H*D]`, i.e. after `WindowPartition3D`. The 128 tokens of a window are strided across raster order, not contiguous. Most mismatches trace to a window-vs-raster assumption, not the math; `debug_lcsa.py` does three-way bisection (kernel / reference / torch-CSR).
 - Correctness bar: max_abs ≤ 1e-2 vs `lcsa/reference.py` in bf16.
 - CSR mask form also avoids materializing the `[h, Lq, Lk]` boolean mask (~VRAM savings at 24 GB-class cards).
 

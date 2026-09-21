@@ -1,12 +1,10 @@
-#!/usr/bin/env python3
-"""M3: FP8 动态量化的 Triton 融合 kernel（sm_89, triton 3.2）。
+"""Fused FP8 (E4M3) dynamic quantization (Triton, sm_89).
 
-动机：eager 路径 abs→amax→div→cast 有 4 次显存往返（temp 物化，~365MB 流量 @56MB 输入，
-仅跑 ~430GB/s），吃掉了 _scaled_mm 的全部收益。融合后理论流量 141MB（amax 读 1 次 +
-量化读 1 写 0.5 次）→ 量化开销 ~0.34ms → ~0.15ms（M=18432,K=1536 工况）。
+`quantize_fp8(x2)` computes `s = amax(|x|)/448; (x2/s).to(e4m3)` in two
+launches (absmax reduction with fp32 atomics, then quantize), keeping the
+scale on the GPU — no host sync.
 
-约定：x 必须 reshape(-1, K) 后 contiguous（reshape 不连续时会复制，安全）。
-amax 用 fp32 原子归约单 pass 完成；scale 保持在 GPU 上，无 host 同步。
+Input must be contiguous, shaped [M, K] (reshape before calling).
 """
 import torch
 import triton
@@ -29,10 +27,11 @@ def _quant_kernel(x_ptr, amax_ptr, out_ptr, n, FP8_MAX: tl.constexpr, BLOCK: tl.
     pid = tl.program_id(0)
     offs = pid * BLOCK + tl.arange(0, BLOCK)
     mask = offs < n
-    amax = tl.load(amax_ptr)  # GPU 标量，无 host 同步
-    s = tl.maximum(amax, 1e-12) / FP8_MAX  # 与 eager 的 x/(amax/448) 逐位一致（不要用倒数乘法）
+    amax = tl.load(amax_ptr)
+    # divide by s; multiplying by 1/s breaks bitwise parity with eager
+    s = tl.maximum(amax, 1e-12) / FP8_MAX
     x = tl.load(x_ptr + offs, mask=mask, other=0.0).to(tl.float32)
-    v = tl.minimum(tl.maximum(x / s, -FP8_MAX), FP8_MAX)  # 饱和防 e4m3fn 溢出成 NaN
+    v = tl.minimum(tl.maximum(x / s, -FP8_MAX), FP8_MAX)  # saturate: e4m3fn overflow -> NaN
     tl.store(out_ptr + offs, v.to(tl.float8e4nv), mask=mask)
 
 
@@ -41,8 +40,7 @@ def _num_warps(block: int) -> int:
 
 
 def quantize_fp8(x2: torch.Tensor):
-    """x2: [M, K] contiguous bf16 → (fp8 张量, scale fp32 GPU 标量)。语义同
-    s = amax/448; (x2/s).to(e4m3)，但只有 2 次读 + 1 次写。"""
+    """x2: [M, K] contiguous bf16 -> (fp8 tensor, fp32 scale as GPU scalar)."""
     n = x2.numel()
     amax = torch.zeros(1, dtype=torch.float32, device=x2.device)
     if n == 0:

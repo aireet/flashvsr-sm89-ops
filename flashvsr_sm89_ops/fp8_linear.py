@@ -1,13 +1,12 @@
-#!/usr/bin/env python3
-"""M3: DiT Linear 层 FP8 化（E4M3 + per-tensor dynamic scale, torch._scaled_mm / sm89）。
+"""FP8 (E4M3, per-tensor scale) Linear via torch._scaled_mm (cuBLASLt, sm_89).
 
-- 权重：加载时静态量化 scale_w = amax(|W|)/448，存 fp8
-- 激活：每次 forward 动态 per-tensor scale（一次 amax 读 pass，对 ms 级 GEMM 可忽略）
-- 输出 bf16；norm/attention/非目标层不动
-- 灰度开关：convert_linears_fp8(model, parts={"ffn","self","cross"})，默认全开
-
-⚠️ 质量门禁是最终裁决（eval/quality_ref.py cmp），本模块只保证数值路径正确。
+Weights are quantized statically at conversion time; activations get a
+dynamic per-tensor scale on every forward. Output is bf16. A custom Triton
+FP8 GEMM measured slower than cuBLASLt across this pipeline's shapes, so
+`torch._scaled_mm` is kept as the backend.
 """
+import re
+
 import torch
 import torch.nn as nn
 
@@ -36,21 +35,17 @@ class FP8Linear(nn.Module):
         if x2.is_contiguous():
             from flashvsr_sm89_ops.fp8_quant import quantize_fp8
             x8, s = quantize_fp8(x2)
-        else:  # 兜底（罕见）：reshape 已复制的场景不会走到这
+        else:
             s = (x2.abs().amax() / FP8_MAX).clamp(min=1e-12).float()
             x8 = (x2 / s).to(torch.float8_e4m3fn)
         y = self._mm(x8, s)
         return y.reshape(*shape[:-1], y.shape[-1])
 
 
-def _convert(linear: nn.Linear) -> FP8Linear:
-    new = FP8Linear(linear)
-    return new
-
-
 def convert_linears_fp8(model: nn.Module, parts=("ffn", "self", "cross")) -> int:
-    """按部件名灰度转换 DiT blocks 内的 Linear；返回转换数量。非 blocks 内的不动。"""
-    import re
+    """Convert DiT-block Linears whose module names match `parts`
+    ("ffn" / "self" / "cross"); returns the number converted. Modules outside
+    `blocks.*` are left untouched."""
     allowed = []
     if "self" in parts:
         allowed += [r"^blocks\.\d+\.self_attn\.[qkvo]$"]
@@ -67,6 +62,6 @@ def convert_linears_fp8(model: nn.Module, parts=("ffn", "self", "cross")) -> int
             continue
         parent_name, _, leaf = name.rpartition(".")
         parent = model.get_submodule(parent_name) if parent_name else model
-        setattr(parent, leaf, _convert(mod))
+        setattr(parent, leaf, FP8Linear(mod))
         n += 1
     return n

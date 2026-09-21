@@ -1,6 +1,6 @@
 # Contributing
 
-Small, measured project — the bar is **evidence**, not line count. A kernel change is accepted when it survives all three gates below; a *negative* result with clean evidence (a falsified optimization) is also a valid contribution and gets documented alongside the positive ones.
+A kernel change is accepted when it survives the three gates below. A negative result with clean evidence is also a valid contribution.
 
 ## The three gates (every change)
 
@@ -17,9 +17,9 @@ Record raw numbers as JSON next to the existing files in `benchmarks/` — same 
 - Python ≥ 3.10, torch ≥ 2.6 (CUDA 12.x), Triton ≥ 3.2, an sm_89 GPU for anything FP8 (bf16 kernels run on sm_80+).
 - `pip install -e .` then `python -c "import flashvsr_sm89_ops"` as the smoke test.
 
-## Project rules that will save you a review round
+## Implementation rules
 
-- Accumulate reductions in fp32; round to bf16 **where eager rounds** — replicating eager's per-op rounding is how the bitwise parities in `docs/kernels.md` were achieved. Don't "clean up" the extra casts.
+- Accumulate reductions in fp32; round to bf16 **where eager rounds** — the bitwise parities in `docs/kernels.md` depend on the explicit casts.
 - Never autotune a `constexpr` that controls a reduction dimension (`BLOCK_D`, etc.) — silent wrong results.
 - Module-level Python float constants are invisible inside `@triton.jit` (Triton 3.2); pass them as `tl.constexpr` args.
 - `tl.math.tanh` doesn't exist in Triton 3.2 — use `1 - 2/(exp(2u)+1)`.
@@ -27,6 +27,6 @@ Record raw numbers as JSON next to the existing files in `benchmarks/` — same 
 
 ## PR expectations
 
-- One operator (or one falsification) per PR.
+- One operator (or one rejected optimization) per PR.
 - Include: parity numbers, A/B diff, e2e delta, quality-gate output, hardware used.
 - Update `docs/kernels.md` if the numerics contract or API changes.

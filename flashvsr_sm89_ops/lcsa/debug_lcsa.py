@@ -1,9 +1,14 @@
-#!/usr/bin/env python3
-"""二分定位: kernel vs torch-CSR(同 keep, fp32 逐块 gather) —— 区分 kernel bug / reference bug。"""
-import sys, math
+"""Three-way bisection for LCSA mismatches: kernel vs torch-CSR vs reference,
+all on the same keep mask — isolates kernel bugs from reference bugs.
+
+Run from this directory:  python debug_lcsa.py
+"""
+import math
+import sys
+
 import torch
 from einops import rearrange
-sys.path.insert(0, "/root/work/workspace/kernel-dev/kernels/lcsa")
+
 import reference as ref
 import triton_lcsa as tlk
 
@@ -31,13 +36,13 @@ keep = ref.draft_block_mask(q_w, k_w, H, f // 2, local, int(Nq * Nk * ratio))
 print("keep density:", keep.float().mean().item(),
       "| zero rows per head:", (keep.sum(-1) == 0).sum(-1).tolist())
 
-# --- Triton kernel 输出（喂窗口序：与 BSA 收到的布局一致）
+# Triton kernel (window-order inputs)
 q_win = q_w.reshape(Nq * S, H * D).unsqueeze(0)
 k_win = k_w.reshape(Nk * S, H * D).unsqueeze(0)
 v_win = v_w.reshape(Nk * S, H * D).unsqueeze(0)
 out_tri = tlk.block_sparse_attention(q_win, k_win, v_win, keep).view(Nq, S, H * D)
 
-# --- torch CSR 逐块 fp32（按 head 切分，与 reference 同语义）
+# torch CSR, per (head, query block), fp32
 sel, cnt, maxk = tlk.build_csr(keep)
 q_hp = rearrange(q_w, "n s (h d) -> h n s d", h=H).float()
 k_hp = rearrange(k_w, "n s (h d) -> h n s d", h=H).float()
@@ -59,19 +64,21 @@ out_t = rearrange(out_t, "h n s d -> n s (h d)")
 d = (out_tri.float() - out_t.float()).abs()
 print(f"kernel vs torchCSR: max={d.max():.4f} mean={d.mean():.6f}")
 
-# --- reference (金标准) vs torchCSR —— 定位 reference 是否有 bug
+# reference vs torchCSR
 out_ref = ref.sparse_attention_ref(q_w, k_w, v_w.view(Nk, S, H * D), keep)
 d2 = (out_ref.to(torch.bfloat16).float() - out_t.float()).abs()
 print(f"ref vs torchCSR:    max={d2.max():.4f} mean={d2.mean():.6f}")
 
-# --- keep 掩码与 official 的差（无 BSA 时跳过）
+# keep mask vs the official implementation (skipped when diffsynth/BSA unavailable)
 try:
-    sys.path.insert(0, "/root/work/workspace/kernel-dev/flashvsr")
-    from diffsynth.models.wan_video_dit import generate_draft_block_mask, build_local_block_mask_shifted_vec_normal_slide
+    from diffsynth.models.wan_video_dit import (
+        build_local_block_mask_shifted_vec_normal_slide,
+        generate_draft_block_mask,
+    )
     loc_off = build_local_block_mask_shifted_vec_normal_slide(bh, bw, 11, 11, include_self=True, device=DEV)
     keep_off = generate_draft_block_mask(1, H, f // 2, q_w, k_w, topk=int(Nq * Nk * ratio), local_attn_mask=loc_off)
     keep_off = keep_off[0]
     same = (keep_off == keep)
-    print(f"my keep vs official keep: 一致率={same.float().mean():.6f} | 完全一致={bool(same.all())}")
+    print(f"keep vs official: match_rate={same.float().mean():.6f} | identical={bool(same.all())}")
 except Exception as e:
-    print("official keep 对比跳过:", type(e).__name__, str(e)[:120])
+    print("official keep comparison skipped:", type(e).__name__, str(e)[:120])

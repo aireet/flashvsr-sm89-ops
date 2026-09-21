@@ -1,17 +1,17 @@
-#!/usr/bin/env python3
-"""M4: RMSNorm+RoPE 融合 Triton kernel（替代 fp64 复数 rope + 5-kernel RMSNorm 链）。
+"""Fused RMSNorm + RoPE (bf16, Triton).
 
-背景（wan_video_dit.py）：SelfAttention 对 q/k 各做 norm_q/k（pow/mean/rsqrt/mul/mul
-5 kernel）→ rope_apply（to fp64 → view_as_complex → complex mul → to bf16，4 kernel，
-~370MB 流量/次）。540 个 rope 实例 + 810 个 norm 实例/全片。
+Replaces a 5-kernel RMSNorm chain plus a complex64/128 RoPE apply with one
+kernel: one program per row, fp32 reduction, RoPE pair rotation via an
+`offs ^ 1` partner-lane load (same 128B cache line, L1-resident).
 
-本 kernel：一行 [D] 一个 program，norm 归约 fp32 一次读完成，pair 旋转用 offs^1 重读
-（同 cache line，L1 命中）。数学与 reference 对齐：
-- RMSNorm: x.float() 归约 → norm 结果 cast 回 bf16 再乘 weight（复刻中间舍入）
-- rope 旋转 fp32（reference fp64 complex，差 ~1e-7 ≪ bf16 量化 8e-3）
-- ROPE=False 退化为纯 RMSNorm+weight（覆盖 cross_attn.norm_q 等无 rope 场景）
+Numerics: RMS reduction in fp32; the normalized value is rounded to bf16
+before the weight multiply to replicate eager's intermediate rounding.
+RoPE rotation itself runs in fp32 (reference uses fp64 complex; the gap,
+~1e-7, is far below bf16 quantization).
 
-freqs：[S,64] fp32 的 cos/sin（wrapper 从 [S,1,64] complex128 拆出），所有 head 共享。
+`freqs_cis` is the complex tensor with tail dim D//2 ([S, 1, 64] in
+FlashVSR); cos/sin are shared across heads. With `rope=False` the kernel
+degrades to plain RMSNorm + weight (e.g. cross-attention q/k norms).
 """
 import torch
 import triton
@@ -34,13 +34,14 @@ def _rms_rope_kernel(
     ms = tl.sum(tl.where(mask, x * x, 0.0), axis=0) / D
     rrms = tl.rsqrt(ms + eps)
     w = tl.load(w_ptr + offs, mask=mask, other=0.0).to(tl.float32)
-    y = (x * rrms).to(tl.bfloat16).to(tl.float32) * w  # 复刻 reference 的 bf16 中间舍入
+    # bf16 round-trip replicates eager's intermediate rounding
+    y = (x * rrms).to(tl.bfloat16).to(tl.float32) * w
 
     if ROPE:
-        o = offs % HEAD_DIM        # head 内偏移
-        i = o // 2                 # pair 索引 ∈ [0, HALF)
+        o = offs % HEAD_DIM
+        i = o // 2
         odd = (o % 2) == 1
-        # 配对 lane（offs^1）：同 cache line，L1 命中；norm/weight 用同一 rrms 重建
+        # partner lane via offs^1: same cache line, so the reload hits L1
         xp = tl.load(x_ptr + base + (offs ^ 1), mask=mask, other=0.0).to(tl.float32)
         wp = tl.load(w_ptr + (offs ^ 1), mask=mask, other=0.0).to(tl.float32)
         yp = (xp * rrms).to(tl.bfloat16).to(tl.float32) * wp
@@ -55,8 +56,8 @@ def _rms_rope_kernel(
 
 
 def _freqs_cos_sin(freqs: torch.Tensor):
-    """[S,1,64] complex（任意 ndim，尾维 64）→ (cos [S,64] fp32 contiguous, sin 同)。"""
-    fr = torch.view_as_real(freqs.reshape(-1, freqs.shape[-1]))  # [S,64,2] fp64
+    """[..., S, 64] complex -> (cos [S, 64] fp32 contiguous, sin likewise)."""
+    fr = torch.view_as_real(freqs.reshape(-1, freqs.shape[-1]))
     cos = fr[..., 0].float().contiguous()
     sin = fr[..., 1].float().contiguous()
     return cos, sin
@@ -64,12 +65,12 @@ def _freqs_cos_sin(freqs: torch.Tensor):
 
 def fused_rms_rope(x: torch.Tensor, weight: torch.Tensor, freqs_cis, eps: float = 1e-6,
                    rope: bool = True, head_dim: int = 128):
-    """x [B, L, D] bf16 → RMSNorm(weight) → [×RoPE]；freqs_cis 为 complex 尾维 64 张量。"""
+    """x [B, L, D] bf16 -> RMSNorm(weight) -> [x RoPE]."""
     B, L, D = x.shape
     x2 = x.reshape(B * L, D)
     out = torch.empty_like(x2)
     if rope:
-        cos, sin = _freqs_cos_sin(freqs_cis)  # 每次拆换约 0.1ms，可由调用方缓存
+        cos, sin = _freqs_cos_sin(freqs_cis)  # ~0.1ms per call; cache at call site if hot
     else:
         cos = torch.empty(0, device=x.device)
         sin = cos
