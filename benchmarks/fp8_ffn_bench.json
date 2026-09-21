@@ -1,0 +1,33 @@
+{
+  "kernel_M18432": {
+    "scale_rel": 0.0,
+    "codes_diff_max": 0.0,
+    "codes_diff_frac": 0,
+    "decoded_maxdiff": 0.0
+  },
+  "kernel_M55296": {
+    "scale_rel": 0.0,
+    "codes_diff_max": 0.0,
+    "codes_diff_frac": 0,
+    "decoded_maxdiff": 0.0
+  },
+  "ffn_M18432": {
+    "old_ms": 5.2,
+    "new_ms": 4.48,
+    "bf16_ms": 7.706,
+    "speedup_vs_old": 1.161,
+    "save_ms": 0.72,
+    "new_vs_bf16_medrel": 0.05207,
+    "new_vs_old_medrel": 0.0
+  },
+  "ffn_M55296": {
+    "old_ms": 19.368,
+    "new_ms": 17.284,
+    "bf16_ms": 22.85,
+    "speedup_vs_old": 1.121,
+    "save_ms": 2.084,
+    "new_vs_bf16_medrel": 0.0518,
+    "new_vs_old_medrel": 0.0
+  },
+  "_projected_save_ms_per_full_video": 235.3
+}

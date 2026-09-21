@@ -1,0 +1,31 @@
+{
+  "L8448": {
+    "L": 8448,
+    "ln_maxdiff": 0.03125,
+    "ln_frac_gt_1e2": 1.2330334584476077e-06,
+    "gate_maxdiff": 0.0,
+    "gate_frac_gt_1e2": 0.0,
+    "ln_ref_ms": 0.1117,
+    "ln_fused_ms": 0.0502,
+    "gate_ref_ms": 0.1029,
+    "gate_fused_ms": 0.0514,
+    "ln_speedup": 2.23,
+    "gate_speedup": 2.0,
+    "fused_gbps": 2551.0
+  },
+  "L18432": {
+    "L": 18432,
+    "ln_maxdiff": 0.015625,
+    "ln_frac_gt_1e2": 6.004615897836629e-07,
+    "gate_maxdiff": 0.0,
+    "gate_frac_gt_1e2": 0.0,
+    "ln_ref_ms": 0.3742,
+    "ln_fused_ms": 0.1198,
+    "gate_ref_ms": 0.3042,
+    "gate_fused_ms": 0.1815,
+    "ln_speedup": 3.12,
+    "gate_speedup": 1.68,
+    "fused_gbps": 1881.0
+  },
+  "_projected_save_ms_per_full_video": 61.0
+}

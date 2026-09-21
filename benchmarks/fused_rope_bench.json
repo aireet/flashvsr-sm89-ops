@@ -1,0 +1,42 @@
+{
+  "L8448_f2h48w88": {
+    "L": 8448,
+    "maxdiff": 0.03125,
+    "frac_gt_1e2": 4.623875611287076e-07,
+    "norm_bitwise": false,
+    "norm_maxdiff": 0.03125,
+    "ref_ms": 0.8207,
+    "fused_ms": 0.1235,
+    "speedup": 6.65,
+    "norm_ref_ms": 0.3309,
+    "norm_fused_ms": 0.062,
+    "gbps": 490.0
+  },
+  "L18432_f2h96w96": {
+    "L": 18432,
+    "maxdiff": 0.015625,
+    "frac_gt_1e2": 1.7660636331129353e-07,
+    "norm_bitwise": false,
+    "norm_maxdiff": 0.015625,
+    "ref_ms": 2.1836,
+    "fused_ms": 0.1558,
+    "speedup": 14.02,
+    "norm_ref_ms": 1.0677,
+    "norm_fused_ms": 0.1207,
+    "gbps": 848.0
+  },
+  "L25344_f6h48w88": {
+    "L": 25344,
+    "maxdiff": 0.015625,
+    "frac_gt_1e2": 4.6238753270699817e-07,
+    "norm_bitwise": false,
+    "norm_maxdiff": 0.015625,
+    "ref_ms": 3.0217,
+    "fused_ms": 0.2188,
+    "speedup": 13.81,
+    "norm_ref_ms": 1.4949,
+    "norm_fused_ms": 0.168,
+    "gbps": 830.0
+  },
+  "_projected_save_ms_per_full_video": 449.1
+}
