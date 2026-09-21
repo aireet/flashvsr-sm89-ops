@@ -47,10 +47,12 @@ Generate outputs for ≥ 2 clips with the patched pipeline, compare against offi
 ```bash
 python gen_cand.py <outdir> example0 example3   # candidate outputs
 python quality_ref.py cmp <outdir> example0 example3
-# pass: LPIPS ≤ 0.05 vs reference; PSNR reported alongside (we got 37.2/36.4 dB)
+# pass: LPIPS ≤ 0.05 vs reference; PSNR reported alongside (we got 38.3/36.0 dB)
 ```
 
-Current evidence: [`benchmarks/quality_cmp.json`](../benchmarks/quality_cmp.json) — LPIPS 0.0117 / 0.0133, PSNR 37.16 / 36.42 dB.
+Current evidence: [`benchmarks/quality_cmp.json`](../benchmarks/quality_cmp.json) — LPIPS 0.0108 / 0.0122, PSNR 38.28 / 35.99 dB.
+
+> ⚠️ When saving pipeline output yourself: the tensor is **[-1, 1]** (official `tensor2video` maps it with `(x+1)*127.5`). A `max > 1.5 → divide by 255` heuristic silently misreads it as [0,1] and clamps the entire dark half of every frame to black — the gate still "passes" because reference and candidate get crushed identically, but the videos come out very dark. Detect the range from `min < 0`, don't guess.
 
 ## Profiling notes (things that skew results)
 

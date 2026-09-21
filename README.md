@@ -16,7 +16,7 @@ RTX 4090 D, 1408×768 (the paper's 768×1408 workload), 1-step DMD, full videos.
 | example2 | 97 | 8487 ms | **6537 ms** | −23.0% | 11.43 → **14.84** | 13.9 → **12.0** GB |
 | example3 | 81 | 7066 ms | **5443 ms** | −23.0% | 11.47 → **14.88** | 13.4 → **11.7** GB |
 
-**1.30× end-to-end, −1.9 GB peak VRAM.** Quality gate vs official outputs: LPIPS 0.0117 / 0.0133 (threshold ≤ 0.05), PSNR 37.2 / 36.4 dB ([`benchmarks/quality_cmp.json`](benchmarks/quality_cmp.json)). At 1920×1024 input (1080p-class) the pack holds −25.8% latency at 18.8 GB peak — comfortably inside a 24 GB card.
+**1.30× end-to-end, −1.9 GB peak VRAM.** Quality gate vs official outputs: LPIPS 0.0108 / 0.0122 (threshold ≤ 0.05), PSNR 38.3 / 36.0 dB ([`benchmarks/quality_cmp.json`](benchmarks/quality_cmp.json)). At 1920×1024 input (1080p-class) the pack holds −25.8% latency at 18.8 GB peak — comfortably inside a 24 GB card.
 
 ## Demos — the official examples, original vs optimized
 
@@ -33,7 +33,7 @@ Click any card to play the video (GitHub's built-in player).
 
 Latency: stock → optimized (medians, −23%): **1.30× end-to-end, 11.5 → 15.0 FPS**. Direct links: [example0](assets/demo/baseline/example0.mp4) · [example1](assets/demo/baseline/example1.mp4) · [example2](assets/demo/baseline/example2.mp4) · [example3](assets/demo/baseline/example3.mp4) (stock), same paths under `assets/demo/optimized/` for the pack.
 
-Visual quality between the two columns is gated: LPIPS ≤ 0.05 and PSNR 37+ dB against the stock outputs ([`benchmarks/quality_cmp.json`](benchmarks/quality_cmp.json)). The rendered demo videos themselves: `eval/demo_times_baseline.json` / `demo_times_optimized.json` record the single-render wall times (6996/6499/6524/5430 ms optimized) and peak VRAM (13.3 → 11.2–11.5 GB).
+Visual quality between the two columns is gated: LPIPS ≤ 0.05 and PSNR ~36–38 dB against the stock outputs ([`benchmarks/quality_cmp.json`](benchmarks/quality_cmp.json)). The rendered demo videos themselves: `eval/demo_times_baseline.json` / `demo_times_optimized.json` record the single-render wall times (6991/6482/6519/5422 ms optimized) and peak VRAM (13.3 → 11.2–11.5 GB).
 
 ## Requirements
 

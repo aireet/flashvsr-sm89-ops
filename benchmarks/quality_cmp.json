@@ -1,12 +1,12 @@
 {
   "example0": {
     "frames": 85,
-    "psnr_db": 37.164,
-    "lpips": 0.01166
+    "psnr_db": 38.284,
+    "lpips": 0.01083
   },
   "example3": {
     "frames": 77,
-    "psnr_db": 36.42,
-    "lpips": 0.01315
+    "psnr_db": 35.988,
+    "lpips": 0.0122
   }
 }
