@@ -1,0 +1,59 @@
+# Benchmarks: what we measured and how to reproduce it
+
+Every number in the README traces to a JSON file in [`benchmarks/`](../benchmarks/). This page gives the commands. Hardware used: RTX 4090 D (sm_89), torch 2.6.0+cu124, Triton 3.2.0.
+
+## Discipline
+
+- Timing: CUDA events, warm-up runs before measurement, medians reported; end-to-end runs use full videos.
+- Every claim has three levels of evidence: op-level parity JSON → block-level A/B → end-to-end time + quality gate.
+- Negative results are kept (`*_triton_bench`, falsified paths) — they're the reason some code *doesn't* exist.
+
+## End-to-end A/B (the headline table)
+
+Pin the workload first: pre-scale inputs to `352×192` so ×4 upscale lands exactly on the paper's 1408×768. Otherwise the official script picks target resolution from the source and you benchmark something else.
+
+```bash
+# baseline (all flags off)
+FLASHVSR_TCDEC_CL=0 FLASHVSR_FP8= FLASHVSR_FUSED_ROPE=0 FLASHVSR_FUSED_ADALN=0 \
+FLASHVSR_TCDEC_COMPILE=0 PINNED_LQ=352x192 python bench_e2e.py --out headtohead_orig.json
+
+# optimized (defaults)
+PINNED_LQ=352x192 python bench_e2e.py --out headtohead_opt2.json
+```
+
+Reference results (same session, RTX 4090 D): `headtohead_orig.json` 7749/8468/8487/7066 ms, 11.4–11.5 FPS, 13.1–13.9 GB peak → `headtohead_opt2.json` 5952/6505/6537/5443 ms, 14.8–15.0 FPS, 11.3–12.0 GB. **1.30×.**
+
+1080p-class (input 480×270 → 1920×1024): optimized 14.26 s → 10.58 s per clip, 18.8 GB peak.
+
+## Op-level suites (ship in this repo's heritage; port paths as needed)
+
+| Suite | Command | Result file | Headline |
+|---|---|---|---|
+| RoPE fusion | `python fused_rope_bench.py` | `fused_rope_bench.json` | 6.6–14× per instance |
+| AdaLN fusion | `python fused_adaln_bench.py` then `fused_adaln_block_smoke.py` | `fused_adaln_bench.json` | 2.0–3.1×, gate bitwise |
+| FP8 GEMM (cuBLASLt) | `python fp8_gemm_bench.py` | `fp8_gemm_bench.json` | 2.07× @M=18k |
+| Triton FP8 GEMM (**falsified**) | `python fp8_gemm_triton_bench.py` | `fp8_gemm_triton_bench.json` | 188–205 TF < cuBLASLt |
+| FFN GELU→FP8 | `python fp8_ffn_bench.py` | `fp8_ffn_bench.json` | codes bitwise-identical |
+| LCSA vs official BSA | `python bsa_compare.py` | `bsa_compare.json` | ±3% TF, allclose |
+| TCDecoder layouts | `python tcdec_bench.py` | `tcdec_bench.json` | channels_last −16.7%, bitwise |
+| TCDecoder compile | `python tcdec_compile_bench.py` | `tcdec_compile_bench.json` | 1.06×, +0.95 GiB |
+
+> The op-level scripts live in the upstream workspace's `eval/` directory rather than this package — the JSONs here are the frozen evidence. Copying the harnesses in is a welcome first contribution (see CONTRIBUTING.md).
+
+## Quality gate (run after ANY operator change)
+
+Generate outputs for ≥ 2 clips with the patched pipeline, compare against official-pipeline outputs:
+
+```bash
+python gen_cand.py <outdir> example0 example3   # candidate outputs
+python quality_ref.py cmp <outdir> example0 example3
+# pass: LPIPS ≤ 0.05 vs reference; PSNR reported alongside (we got 37.2/36.4 dB)
+```
+
+Current evidence: [`benchmarks/quality_cmp.json`](../benchmarks/quality_cmp.json) — LPIPS 0.0117 / 0.0133, PSNR 37.16 / 36.42 dB.
+
+## Profiling notes (things that skew results)
+
+- `torch.profiler` `key_averages()` **double-counts** overlapping kernels — aggregate the chrome trace by kernel name instead.
+- Bucketing trace kernels by name substring mis-buckets: cuDNN conv fprop kernels carry `cutlass` in their names, and the flash-attention kernel carries `cutlass` too. We briefly "found" a mystery 0.8s bf16 GEMM this way; there wasn't one.
+- `triton.testing.do_bench` for anything under ~1 ms; CUDA events for pipeline-level.
