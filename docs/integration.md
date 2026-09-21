@@ -67,3 +67,21 @@ The upstream `DiTBlock.forward` needs ~10 lines to branch on `FUSED_ADALN` / `FU
 - If the model is wrapped by VRAM management, unwrap norms with `getattr(m, "module", m)` before reading `.weight`/`.eps`.
 
 Verify with a one-block A/B (max diff should be ≤ 1-2 bf16 ulp) before a full run — an op-level bench alone will NOT catch argument-order wiring bugs, because your bench and your wrapper share the same (possibly wrong) convention.
+
+## Output range contract (saving frames yourself)
+
+The pipeline returns video tensors in **[-1, 1]**. The official `tensor2video` maps them with `(x + 1) * 127.5` — use it, or this equivalent:
+
+```python
+if out.min() < -0.05:            # [-1,1] — the pipeline contract
+    out = (out + 1.0) * 127.5
+elif out.max() > 1.5:            # already [0,255]
+    pass
+else:                            # [0,1]
+    out = out * 255.0
+frames = out.clamp(0, 255).round().numpy().astype("uint8")
+```
+
+Do **not** guess the range with a bare `if out.max() > 1.5: out /= 255` heuristic: `[-1,1]` slips past it, and `clamp(0,1)` then crushes the entire dark half of every frame to black. This exact bug shipped in our demo exporter once — the quality gate still "passed" because reference and candidate were crushed identically. If you have an A/B-style check, validate its shared preprocessing once against a known-good external reference.
+
+Note: the operators in this pack are numerics-preserving (bitwise or ≤2 bf16 ulp vs eager), so they never change this contract — the range is set by the FlashVSR pipeline itself.
