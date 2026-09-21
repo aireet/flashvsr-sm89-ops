@@ -20,14 +20,16 @@ RTX 4090 D, 1408×768 (the paper's 768×1408 workload), 1-step DMD, full videos.
 
 ## Demos — the official examples, original vs optimized
 
-All four official example clips, rendered end-to-end on the same RTX 4090: the stock pipeline vs this pack (all operators on). Inputs are the official example videos pre-scaled to 352×192 (→ 1408×768 output, the timed workload). Click to play; timings are the medians from the table above.
+All four official example clips, rendered end-to-end on the same RTX 4090: the stock pipeline vs this pack (all operators on). Inputs are the official example videos pre-scaled to 352×192 (→ 1408×768 output, the timed workload).
 
-| Case | Input (official example) | Stock pipeline (4090) | With this pack (4090) | Latency stock → opt | FPS stock → opt |
-|---|---|---|---|---|---|
-| example0 · 89F | [▶ input](assets/demo/example0_input.mp4) | [▶ stock 7.75 s](assets/demo/baseline/example0.mp4) | [▶ optimized 5.95 s](assets/demo/optimized/example0.mp4) | 7749 → **5952 ms** (−23.2%) | 11.5 → **15.0** |
-| example1 · 97F | [▶ input](assets/demo/example1_input.mp4) | [▶ stock 8.47 s](assets/demo/baseline/example1.mp4) | [▶ optimized 6.51 s](assets/demo/optimized/example1.mp4) | 8468 → **6505 ms** (−23.2%) | 11.5 → **14.9** |
-| example2 · 97F | [▶ input](assets/demo/example2_input.mp4) | [▶ stock 8.49 s](assets/demo/baseline/example2.mp4) | [▶ optimized 6.54 s](assets/demo/optimized/example2.mp4) | 8487 → **6537 ms** (−23.0%) | 11.4 → **14.8** |
-| example3 · 81F | [▶ input](assets/demo/example3_input.mp4) | [▶ stock 7.07 s](assets/demo/baseline/example3.mp4) | [▶ optimized 5.44 s](assets/demo/optimized/example3.mp4) | 7066 → **5443 ms** (−23.0%) | 11.5 → **14.9** |
+| Case | Input | Stock pipeline (4090) | With this pack (4090) |
+|---|---|---|---|
+| **example0** · 89F · 7749 → **5952 ms** | <video src="assets/demo/example0_input.mp4" width="200" controls muted loop></video> | <video src="assets/demo/baseline/example0.mp4" width="300" controls muted loop></video> | <video src="assets/demo/optimized/example0.mp4" width="300" controls muted loop></video> |
+| **example1** · 97F · 8468 → **6505 ms** | <video src="assets/demo/example1_input.mp4" width="200" controls muted loop></video> | <video src="assets/demo/baseline/example1.mp4" width="300" controls muted loop></video> | <video src="assets/demo/optimized/example1.mp4" width="300" controls muted loop></video> |
+| **example2** · 97F · 8487 → **6537 ms** | <video src="assets/demo/example2_input.mp4" width="200" controls muted loop></video> | <video src="assets/demo/baseline/example2.mp4" width="300" controls muted loop></video> | <video src="assets/demo/optimized/example2.mp4" width="300" controls muted loop></video> |
+| **example3** · 81F · 7066 → **5443 ms** | <video src="assets/demo/example3_input.mp4" width="200" controls muted loop></video> | <video src="assets/demo/baseline/example3.mp4" width="300" controls muted loop></video> | <video src="assets/demo/optimized/example3.mp4" width="300" controls muted loop></video> |
+
+Latency: stock → optimized (medians, −23%): **1.30× end-to-end, 11.5 → 15.0 FPS**. Direct links: [example0](assets/demo/baseline/example0.mp4) · [example1](assets/demo/baseline/example1.mp4) · [example2](assets/demo/baseline/example2.mp4) · [example3](assets/demo/baseline/example3.mp4) (stock), same paths under `assets/demo/optimized/` for the pack.
 
 Visual quality between the two columns is gated: LPIPS ≤ 0.05 and PSNR 37+ dB against the stock outputs ([`benchmarks/quality_cmp.json`](benchmarks/quality_cmp.json)). The rendered demo videos themselves: `eval/demo_times_baseline.json` / `demo_times_optimized.json` record the single-render wall times (6996/6499/6524/5430 ms optimized) and peak VRAM (13.3 → 11.2–11.5 GB).
 
