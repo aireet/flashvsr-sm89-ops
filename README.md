@@ -1,6 +1,13 @@
 # flashvsr-sm89-ops
 
-Drop-in operator pack that runs [FlashVSR v1.1 (Tiny)](https://github.com/OpenImagingLab/FlashVSR) at **~1.3× on a single RTX 4090**, with **lower peak VRAM** and a measured, gated quality budget.
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
+[![Python](https://img.shields.io/badge/python-3.10%2B-blue)]()
+[![PyTorch](https://img.shields.io/badge/torch-2.6%2B-ee4c2c)]()
+[![Triton](https://img.shields.io/badge/triton-3.2%2B-blue)]()
+[![GPU](https://img.shields.io/badge/GPU-RTX_4090_(sm89)-green)]()
+[![arXiv](https://img.shields.io/badge/arXiv-2510.12747-b31b1b)](https://arxiv.org/abs/2510.12747)
+
+Drop-in operator pack that runs [FlashVSR v1.1 (Tiny)](https://github.com/OpenImagingLab/FlashVSR) at **~1.3× on a single RTX 4090**, with **lower peak VRAM** and a measured, gated quality budget. The official pipeline targets A100-class GPUs for its real-time claim; this pack brings streaming VSR to a consumer card at **14.8–15.0 FPS @ 1408×768**.
 
 It packages five operators for the sm_89 (Ada) generation — fused RMSNorm+RoPE, fused AdaLN (LN+modulate / gate+add), FP8 E4M3 linears via cuBLASLt, a fused GELU→FP8 FFN mid-section, and channels_last/compile handling for the TCDecoder — plus a Triton block-sparse attention kernel matching the official CUDA BSA kernel within noise, and the benchmark data behind every number below.
 
@@ -19,6 +26,8 @@ RTX 4090 D, 1408×768 (the paper's 768×1408 workload), 1-step DMD, full videos.
 **1.30× end-to-end, −1.9 GB peak VRAM.** Quality gate vs official outputs: LPIPS 0.0108 / 0.0122 (threshold ≤ 0.05), PSNR 38.3 / 36.0 dB ([`benchmarks/quality_cmp.json`](benchmarks/quality_cmp.json)). At 1920×1024 input (1080p-class) the pack holds −25.8% latency at 18.8 GB peak — comfortably inside a 24 GB card.
 
 ## Demos — the official examples, original vs optimized
+
+![example0: stock vs this pack](assets/demo/stock_vs_pack_example0.gif)
 
 All four official example clips, rendered end-to-end on the same RTX 4090: the stock pipeline vs this pack (all operators on). Inputs are the official example videos pre-scaled to 352×192 (→ 1408×768 output, the timed workload).
 
@@ -85,6 +94,13 @@ Every operator passed a three-level gate before integration:
 1. **Op-level parity** vs the eager reference — bitwise where reachable (`gate_add`, GELU→FP8 codes, channels_last), else ≤ 1–2 bf16 ulp (fused norms).
 2. **Block-level A/B** through a real `DiTBlock` — catches wiring bugs op-level benches cannot.
 3. **End-to-end quality gate** — full videos vs official outputs, LPIPS ≤ 0.05 and PSNR reported ([`benchmarks/quality_cmp.json`](benchmarks/quality_cmp.json)).
+
+## FAQ
+
+- **Which GPUs?** FP8 paths need sm_89 tensor cores (RTX 4090 / 4090 D, L40, RTX 6000 Ada). The bf16 Triton kernels and LCSA run on anything sm_80+ (A100, 3090, …); on non-Ada cards convert with `parts=()` and keep the fused norms + channels_last.
+- **Other resolutions / models?** Numbers here are pinned to the 1408×768 / 1-step workload. The operators are shape-generic (per-tensor scales, no baked shapes); expect the FP8 GEMM gain to shift with the M dimension (see the M=18k vs M=55k rows).
+- **Training?** No — inference only; all converted params are frozen.
+- **Why isn't LCSA the speedup?** The official CUDA BSA kernel already runs at ~78% of achievable throughput on this chip; the wins are in the elementwise/norm/linear paths.
 
 ## Known limits
 
