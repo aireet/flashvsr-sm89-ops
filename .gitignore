@@ -3,3 +3,7 @@ __pycache__/
 *.egg-info/
 build/
 dist/
+
+# gh CLI state accidentally created by running tools inside the package
+.config/
+.local/
