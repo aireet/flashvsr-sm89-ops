@@ -6,8 +6,11 @@ mit-han-lab ``block_sparse_attn`` module when the real CUDA package is absent
 diffsynth, whose DiT imports block_sparse_attn at module load time.
 """
 from .compat_bsa import active_backend, ensure_bsa_available
+from .compat_deps import ensure_modelscope_available, ensure_transformers_compat
 
 ensure_bsa_available()
+ensure_modelscope_available()
+ensure_transformers_compat()
 
 from .fused_rms_rope import fused_rms_rope
 from .fused_adaln import fused_ln_modulate, fused_gate_add

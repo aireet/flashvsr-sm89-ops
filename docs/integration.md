@@ -112,3 +112,20 @@ fails with `torch.cat(): expected a non-empty list of Tensors` below
 `num_frames = 25`. `examples/run_flashvsr.py` and the ComfyUI node hold the
 last frame until the minimum is reached; if you roll your own runner, do the
 same.
+
+## Compatibility layers (installed at pack import)
+
+`import flashvsr_sm89_ops` also defuses two upstream landmines before diffsynth
+is ever imported (see `compat_deps.py`):
+
+- **modelscope** — `diffsynth/models/downloader.py` imports it unconditionally,
+  but upstream's own requirements.txt doesn't list it and local-weight loading
+  never calls it. If absent, a stub module is injected; the stub raises a clear
+  error only if the downloader preset path is actually used.
+  `pip install modelscope` if you want that path.
+- **transformers ≥ 5** — diffsynth imports `PretrainedConfig`/`PreTrainedModel`
+  from `transformers.modeling_utils`, which v5 stopped re-exporting. The names
+  are aliased back (no-op on transformers 4.x, which upstream pins).
+
+`ftfy` (text-encoder path, listed in upstream requirements.txt) ships as a real
+dependency of this pack.
