@@ -1,0 +1,22 @@
+{
+  "what": "examples/run_flashvsr.py end-to-end on a PRISTINE upstream FlashVSR clone (OpenImagingLab/FlashVSR @ cf910c6) with zero source edits; FS89_LCSA=triton runs need no CUDA compilation",
+  "machine": "RTX 4090 D 48GB, torch 2.6.0+cu124, triton 3.2.0, flashvsr-env",
+  "date": "2026-09-24",
+  "headline_1408x768": {
+    "clip": "assets/demo/example0_input.mp4 (352x192 -> 1408x768, 85 usable frames, single run each)",
+    "stock_no_ops": {"ms": 9088, "fps": 9.35, "peak_gb": 13.1, "lcsa": "bsa-cuda"},
+    "pack_triton": {"ms": 7756, "fps": 11.11, "peak_gb": 11.3, "lcsa": "triton-stub"},
+    "pack_bsa": {"ms": 7515, "fps": 11.31, "peak_gb": 11.3, "lcsa": "bsa-cuda"},
+    "backend_delta": "triton vs cuda-bsa within the pack: ~3%",
+    "note": "same-session A/B. Both sides ran ~20% slower than the published medians (headtohead_orig/opt2.json: 7749 -> 5952 ms, 1.30x) recorded on a different day; today's ratio is 1.17-1.20x. Treat medians-of-repeats vs single-run as the accuracy bound."
+  },
+  "quality_1536x1536": {
+    "clip": "21-frame 384x384 input -> 1536x1536, seed 0",
+    "pack_triton_vs_stock_bsa": {"psnr_db": 36.95, "lpips_alex": 0.022, "mean_abs_diff_255": 2.399},
+    "gate": "LPIPS <= 0.05 (matches quality_cmp.json methodology)"
+  },
+  "comfyui_node_selftest": {
+    "repo": "ComfyUI-FlashVSR-SM89",
+    "checks": ["upscale 21f 384x384 -> 1536x1536 (ops on)", "IMAGE contract [0,1] range", "save mp4", "8-frame clip auto-pad to streaming minimum F=25", "stock toggle rebuilds pipeline"]
+  }
+}

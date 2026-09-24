@@ -59,3 +59,24 @@ Current evidence: [`benchmarks/quality_cmp.json`](../benchmarks/quality_cmp.json
 - `torch.profiler` `key_averages()` **double-counts** overlapping kernels — aggregate the chrome trace by kernel name instead.
 - Bucketing trace kernels by name substring mis-buckets: cuDNN conv fprop kernels carry `cutlass` in their names, and the flash-attention kernel carries `cutlass` too. We briefly "found" a mystery 0.8s bf16 GEMM this way; there wasn't one.
 - `triton.testing.do_bench` for anything under ~1 ms; CUDA events for pipeline-level.
+
+## Quickstart end-to-end (pristine-clone A/B)
+
+[`examples/run_flashvsr.py`](../examples/run_flashvsr.py) runs the pack on a
+pristine upstream clone with zero source edits; `--no-ops` runs the stock
+pipeline in the same process for A/B:
+
+```bash
+git clone https://github.com/OpenImagingLab/FlashVSR /tmp/FlashVSR
+python examples/run_flashvsr.py --flashvsr-root /tmp/FlashVSR \
+    --input assets/demo/example0_input.mp4 --out-dir /tmp/out
+python examples/run_flashvsr.py --flashvsr-root /tmp/FlashVSR \
+    --input assets/demo/example0_input.mp4 --out-dir /tmp/out_stock --no-ops
+```
+
+Evidence: [`benchmarks/quickstart_smoke.json`](../benchmarks/quickstart_smoke.json) —
+same-session A/B (single runs; the published headline numbers above are
+session medians, so absolute values drift between days while the ratio holds):
+stock 9088 ms / 13.1 GB vs pack 7756 ms / 11.3 GB with the zero-compile
+Triton attention (7515 ms with the CUDA BSA extension — backend delta ~3%).
+Quality on a second workload: PSNR 36.95 dB, LPIPS 0.022 vs stock.
