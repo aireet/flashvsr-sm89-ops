@@ -75,8 +75,10 @@ python examples/run_flashvsr.py --flashvsr-root /tmp/FlashVSR \
 ```
 
 Evidence: [`benchmarks/quickstart_smoke.json`](../benchmarks/quickstart_smoke.json) —
-same-session A/B (single runs; the published headline numbers above are
-session medians, so absolute values drift between days while the ratio holds):
-stock 9088 ms / 13.1 GB vs pack 7756 ms / 11.3 GB with the zero-compile
-Triton attention (7515 ms with the CUDA BSA extension — backend delta ~3%).
-Quality on a second workload: PSNR 36.95 dB, LPIPS 0.022 vs stock.
+same-session A/B, gen-only timing (input prep is CPU bicubic and is reported
+separately; single runs, no repeats): stock 7640 ms / 11.13 FPS / 13.1 GB vs
+pack **6137 ms / 13.85 FPS / 11.3 GB** with the zero-compile Triton attention
+(~6045 ms with the CUDA BSA extension — backend delta 1.5-3%). That is
+**1.25× same-session** against published session medians of 1.30×. Quality on
+the same clip: PSNR 36.75 dB, LPIPS 0.017 vs stock; reruns are bit-identical
+for a fixed seed.

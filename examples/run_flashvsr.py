@@ -131,7 +131,9 @@ def main():
             F = 25
             print(f"[run_flashvsr] {name}: {reps} frame(s) held to reach the "
                   f"streaming minimum (F=25)")
+        prep_ms = (time.time() - t0) * 1000  # CPU bicubic + pad; reported separately
 
+        t0 = time.time()
         video = pipe(
             prompt="", negative_prompt="", cfg_scale=1.0, num_inference_steps=1,
             seed=args.seed, LQ_video=LQ, num_frames=F, height=th, width=tw,
@@ -139,14 +141,15 @@ def main():
             topk_ratio=args.sparse_ratio * 768 * 1280 / (th * tw),
             kv_ratio=3.0, local_range=args.local_range, color_fix=True,
         )
-        gen_ms = (time.time() - t0) * 1000
+        gen_ms = (time.time() - t0) * 1000  # pipe() only — the comparable number
         frames = official.tensor2video(video)
         save_path = os.path.join(
             out_dir, f"FlashVSR_v1.1_Tiny_{name.split('.')[0]}_seed{args.seed}.mp4")
         official.save_video(frames, save_path, fps=fps, quality=6)
         peak = torch.cuda.max_memory_allocated() / 2**30
-        print(f"[run_flashvsr] {name}: {gen_ms:.0f} ms, {F - 4} frames, "
-              f"{(F - 4) / gen_ms * 1000:.2f} FPS, peak {peak:.1f} GB -> {save_path}")
+        print(f"[run_flashvsr] {name}: prep {prep_ms:.0f} ms + pipe {gen_ms:.0f} ms "
+              f"({(F - 4) / gen_ms * 1000:.2f} FPS on {F - 4} frames), "
+              f"peak {peak:.1f} GB -> {save_path}")
 
     print("Done.")
 
