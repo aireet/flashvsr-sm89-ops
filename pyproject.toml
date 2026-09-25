@@ -28,6 +28,8 @@ dependencies = [
     "imageio",
     "imageio-ffmpeg",
     "huggingface_hub",
+    "torchvision",
+    "sentencepiece",
 ]
 
 [tool.setuptools.packages.find]
