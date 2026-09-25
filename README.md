@@ -64,12 +64,12 @@ git clone -b feat/quickstart-zero-compile https://github.com/aireet/flashvsr-sm8
 pip install ./flashvsr-sm89-ops
 
 python flashvsr-sm89-ops/examples/run_flashvsr.py \
-    --flashvsr-root ./FlashVSR \
-    --input /path/to/video.mp4 \
-    --out-dir ./results
+    --flashvsr-root "$(pwd)/FlashVSR" \
+    --input "$(pwd)/my_video.mp4" \
+    --out-dir "$(pwd)/results"
 ```
 
-`--input` accepts a video file or a directory of frames, and can be repeated for batches. Compare against the stock pipeline by adding `--no-ops` (same process, same weights). If weights are already in place at `FlashVSR/examples/WanVSR/FlashVSR-v1.1/`, add `--no-download` to skip the fetch. No clip handy? `flashvsr-sm89-ops/assets/demo/example0_input.mp4` (352×192, the input of the timed workload above) works.
+`--input` accepts a video file or a directory of frames (absolute or relative — both resolve against the directory you run from), and can be repeated for batches. Compare against the stock pipeline by adding `--no-ops` (same process, same weights). If weights are already in place at `FlashVSR/examples/WanVSR/FlashVSR-v1.1/`, add `--no-download` to skip the fetch. No clip handy? `flashvsr-sm89-ops/assets/demo/example0_input.mp4` (352×192, the input of the timed workload above) works.
 
 **Or two lines in your own script** — anywhere after `enable_vram_management`, before `init_cross_kv()`:
 

@@ -97,7 +97,10 @@ def main():
     ensure_weights(wanvsr, download=not args.no_download)
 
     # The official example resolves models/results relative to its own directory.
+    # Resolve user paths BEFORE the chdir so relative --input stays relative to
+    # the caller's directory.
     out_dir = os.path.abspath(args.out_dir)
+    input_paths = [os.path.abspath(p) for p in args.input]
     os.chdir(wanvsr)
     sys.path.insert(0, root)
     sys.path.insert(0, wanvsr)
@@ -113,8 +116,7 @@ def main():
           f"(lcsa={flashvsr_sm89_ops.active_backend()})")
 
     os.makedirs(out_dir, exist_ok=True)
-    for p in args.input:
-        p = os.path.abspath(p)
+    for p in input_paths:
         torch.cuda.empty_cache(); torch.cuda.ipc_collect()
         name = os.path.basename(p.rstrip("/"))
         t0 = time.time()
