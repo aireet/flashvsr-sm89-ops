@@ -15,6 +15,19 @@ dependencies = [
     # diffsynth's T5 prompt path imports ftfy (listed in upstream FlashVSR's
     # requirements.txt but easy to miss when installing only this pack)
     "ftfy",
+    # the diffsynth runtime the pipeline needs (upstream FlashVSR's own
+    # requirements.txt pins numpy/torch versions that no longer install on
+    # current Python; these are deliberately unpinned — torch 2.6 -> 2.14 and
+    # transformers 4.x -> 5.x are all verified)
+    "transformers",
+    "einops",
+    "safetensors",
+    "numpy",
+    "pillow",
+    "tqdm",
+    "imageio",
+    "imageio-ffmpeg",
+    "huggingface_hub",
 ]
 
 [tool.setuptools.packages.find]
