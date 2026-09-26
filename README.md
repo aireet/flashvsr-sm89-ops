@@ -7,7 +7,7 @@
 [![GPU](https://img.shields.io/badge/GPU-RTX_4090_(sm89)-green)]()
 [![arXiv](https://img.shields.io/badge/arXiv-2510.12747-b31b1b)](https://arxiv.org/abs/2510.12747)
 
-Drop-in operator pack that runs [FlashVSR v1.1 (Tiny)](https://github.com/OpenImagingLab/FlashVSR) at **~1.3× on a single RTX 4090**, with **lower peak VRAM** and a measured, gated quality budget. The official pipeline targets A100-class GPUs for its real-time claim; this pack brings streaming VSR to a consumer card at **14.8–15.0 FPS @ 1408×768**.
+Drop-in operator pack that runs [FlashVSR v1.1 (Tiny)](https://github.com/OpenImagingLab/FlashVSR) at **~1.3× on a single RTX 4090**, with **lower peak VRAM** and a measured, gated quality budget. The official pipeline targets A100-class GPUs for its real-time claim; this pack brings streaming VSR to a consumer card at **14.4–15.0 FPS @ 1408×768** — **without compiling a single CUDA extension and without editing FlashVSR source** ([quickstart](#quickstart); [ComfyUI node](#use-it-in-comfyui)).
 
 It packages five operators for the sm_89 (Ada) generation — fused RMSNorm+RoPE, fused AdaLN (LN+modulate / gate+add), FP8 E4M3 linears via cuBLASLt, a fused GELU→FP8 FFN mid-section, and channels_last/compile handling for the TCDecoder — plus a Triton block-sparse attention kernel matching the official CUDA BSA kernel within noise, and the benchmark data behind every number below.
 
@@ -24,6 +24,8 @@ RTX 4090 D, 1408×768 (the paper's 768×1408 workload), 1-step DMD, full videos.
 | example3 | 81 | 7066 ms | **5443 ms** | −23.0% | 11.47 → **14.88** | 13.4 → **11.7** GB |
 
 **1.30× end-to-end, −1.9 GB peak VRAM.** Quality gate vs official outputs: LPIPS 0.0108 / 0.0122 (threshold ≤ 0.05), PSNR 38.3 / 36.0 dB ([`benchmarks/quality_cmp.json`](benchmarks/quality_cmp.json)). At 1920×1024 input (1080p-class) the pack holds −25.8% latency at 18.8 GB peak — comfortably inside a 24 GB card.
+
+An independent re-run of the same methodology in fresh processes against the one-call integration (pristine upstream clone, no dev-venv crutches) reproduced it as **1.26–1.28× same-session** (stock 11.45–11.49 FPS — identical to the published session; Triton attention backend 1.4% behind the CUDA one): [`benchmarks/pr2_harness_*.json`](benchmarks/), methodology in [`docs/benchmarks.md`](docs/benchmarks.md).
 
 ## Demos — the official examples, original vs optimized
 
@@ -47,14 +49,34 @@ Visual quality between the two columns is gated: LPIPS ≤ 0.05 and PSNR ~36–3
 ## Requirements
 
 - GPU: RTX 4090 / 4090 D (sm_89). The FP8 path requires sm_89 tensor cores; the bf16 Triton kernels and the LCSA kernel run on anything sm_80+.
-- Python ≥ 3.10, PyTorch ≥ 2.6 (CUDA 12.4), Triton ≥ 3.2.
-- A working FlashVSR v1.1 checkout (this pack patches into its pipeline; it does not replace it). FlashVSR and its model assets are Apache-2.0 / per their upstream terms.
+- Python ≥ 3.10, PyTorch ≥ 2.6, Triton ≥ 3.2. Newer stacks work too — the pipeline is verified end-to-end on torch 2.14 / triton 3.8 / transformers 5.17.
+- A C compiler and your interpreter's dev headers for Triton's first-run JIT (Debian/Ubuntu: `apt install python3-dev`; match the package to your Python version if you use a non-system interpreter).
+- A FlashVSR v1.1 checkout to import the pipeline from. **No CUDA compilation of any kind** — the mit-han-lab Block-Sparse-Attention extension is not needed; a Triton stand-in is installed automatically when it's absent. Other import-time landmines in upstream diffsynth (`modelscope`, transformers-v5 renames) are defused by the pack as well.
 
 ## Quickstart
 
+Three commands, no source edits. The reference runner mirrors the official example 1:1 (same input prep, same pipeline call, same output naming), auto-downloads weights (~6.5 GB, once, from HuggingFace) and prints per-clip timing:
+
+> **Where to install from:** these commands use the `feat/quickstart-zero-compile` branch, which carries the quickstart (PR #2). After that PR merges, the plain repo URL works identically.
+
 ```bash
-pip install .            # from this directory; or just keep it on PYTHONPATH
-python -c "import flashvsr_sm89_ops; print('ok')"
+git clone https://github.com/OpenImagingLab/FlashVSR
+git clone -b feat/quickstart-zero-compile https://github.com/aireet/flashvsr-sm89-ops
+pip install ./flashvsr-sm89-ops
+
+python flashvsr-sm89-ops/examples/run_flashvsr.py \
+    --flashvsr-root "$(pwd)/FlashVSR" \
+    --input "$(pwd)/my_video.mp4" \
+    --out-dir "$(pwd)/results"
+```
+
+`--input` accepts a video file or a directory of frames (absolute or relative — both resolve against the directory you run from), and can be repeated for batches. Compare against the stock pipeline by adding `--no-ops` (same process, same weights). If weights are already in place at `FlashVSR/examples/WanVSR/FlashVSR-v1.1/`, add `--no-download` to skip the fetch. No clip handy? `flashvsr-sm89-ops/assets/demo/example0_input.mp4` (352×192, the input of the timed workload above) works.
+
+**Or two lines in your own script** — anywhere after `enable_vram_management`, before `init_cross_kv()`:
+
+```python
+import flashvsr_sm89_ops
+flashvsr_sm89_ops.enable(pipe)     # FP8 linears + fused kernels + channels_last + Triton attention
 ```
 
 Standalone use of any operator:
@@ -72,7 +94,47 @@ z = fused_gate_add(x, scale, x)          # x + gate * residual, bitwise-identica
 x8, s = quantize_fp8(x)                  # fused absmax + E4M3 cast, (fp8, per-tensor scale)
 ```
 
-Wiring into the FlashVSR pipeline (env-flag controlled, all default-on after gating) is a ~40-line patch to the inference entry point — see [`docs/integration.md`](docs/integration.md). Per-kernel API and numerics contracts: [`docs/kernels.md`](docs/kernels.md). Reproducing every number: [`docs/benchmarks.md`](docs/benchmarks.md).
+Integration details and env flags: [`docs/integration.md`](docs/integration.md). Per-kernel API and numerics contracts: [`docs/kernels.md`](docs/kernels.md). Reproducing every number: [`docs/benchmarks.md`](docs/benchmarks.md).
+
+**ComfyUI?** This repo is also a ComfyUI node — see [Use it in ComfyUI](#use-it-in-comfyui) below.
+
+## Use it in ComfyUI
+
+This repository doubles as a ComfyUI node pack — one node with the same two inputs as ComfyUI's built-in (cloud, paid) FlashVSR node, running locally on your own GPU:
+
+```bash
+cd ComfyUI/custom_nodes
+git clone https://github.com/aireet/flashvsr-sm89-ops.git
+```
+
+Restart ComfyUI (or use ComfyUI-Manager's *Install from Git*). No pip step — the node imports the operator pack from the cloned checkout itself.
+
+```
+[Load Video]  ->  [FlashVSR Video Upscale (sm89, local)]  ->  [Save Video]
+     core                      the only custom node                  core
+```
+
+| input | default | meaning |
+|---|---|---|
+| `video` | — | the low-resolution clip, from the core *Load Video* node |
+| `target_resolution` | `1080p` | `720p` · `1080p` · `2K` · `4K` — roughly how tall the result should be |
+
+A complete graph ships in [`comfyui/workflows/flashvsr_minimal.json`](comfyui/workflows/flashvsr_minimal.json) — drop it on the canvas, put your clip in `ComfyUI/input/`, and Queue. Output snaps to the model's 128-px grid (16:9 `1080p` → 1920×1024), keeps the frame rate, and carries audio through when the frame count is unchanged. First run provisions itself (FlashVSR checkout, ~6.5 GB weights, one-time Triton JIT — same compiler requirement as the quickstart above).
+
+- The node shows per-block progress in the UI while it runs (tiled renders keep counting across tiles on one bar).
+- It plays by ComfyUI's memory rules: before a run it frees models other nodes left on the GPU; after the run it parks its pipeline in CPU RAM — safe to chain after a video-generation node on the same card.
+- VRAM tracks the largest tile, not the canvas (~3 s clip, weights included): **720p ≈ 9 GB · 1080p ≈ 19 GB · 2K ≈ 21 GB · 4K ≈ 20 GB**. Outputs above ~2.2 MP render automatically as overlapping spatial tiles (128-px grid, 256 px blend overlap, ~+13% wall time at 2K; measured in [`benchmarks/tiled_render.json`](benchmarks/tiled_render.json)) — so 4K fits a 24 GB card.
+- Short clips are padded by holding the last frame (the streaming model consumes blocks of 8); output follows the `8n+1` frame rule. Split longer videos with the core *Trim Video* node.
+- `COMFYUI_ROOT=/root/ComfyUI python comfyui/selftest.py <clip.mp4>` drives the node end-to-end outside the server.
+
+## Repository layout
+
+| Path | What it is |
+|---|---|
+| `flashvsr_sm89_ops/` | the operator pack (the pip package): kernels + the one-call `enable()` API |
+| `examples/` | direct Python usage — the zero-patch runner and per-operator snippets |
+| `comfyui/` | the ComfyUI node pack (`nodes.py`, selftest, sample workflow); the root `__init__.py` is ComfyUI's entry point into it |
+| `benchmarks/`, `docs/` | the data behind every number above, and the integration/kernel contracts |
 
 ## What's inside
 
@@ -83,7 +145,7 @@ Wiring into the FlashVSR pipeline (env-flag controlled, all default-on after gat
 | `FP8Linear` (E4M3, per-tensor) | bf16 `nn.Linear` in DiT FFN/QKV/out-proj | GEMM **2.07×** (M=18k) / **1.35–1.41×** (M=55k), 276–292 TF on tensor cores | [`benchmarks/fp8_gemm_bench.json`](benchmarks/fp8_gemm_bench.json) |
 | `FP8FFN` (GELU→FP8 fusion) | FFN mid-section: GELU + separate quantize pass | bitwise-identical codes vs the two-pass chain; **1.12–1.16×** chain, ≈ −235 ms | [`benchmarks/fp8_ffn_bench.json`](benchmarks/fp8_ffn_bench.json) |
 | `TCDecoder channels_last` (+ optional MemBlock `torch.compile`) | NCHW decoder convs | **−16.7%** decode, bitwise-identical; compile adds 1.06× (+0.95 GiB) | [`benchmarks/tcdec_bench.json`](benchmarks/tcdec_bench.json) |
-| `lcsa/` Triton block-sparse attention | official CUDA BSA kernel (sm_80 compat build) | **parity: 104–116 vs 101–119 TF**, max diff ≤ 1e-3, allclose | [`benchmarks/bsa_compare.json`](benchmarks/bsa_compare.json) |
+| `lcsa/` Triton block-sparse attention | official CUDA BSA kernel (sm_80 compat build) | **parity: 104–116 vs 101–119 TF**, max diff ≤ 1e-3, allclose; end-to-end within ~3% of the CUDA kernel | [`benchmarks/bsa_compare.json`](benchmarks/bsa_compare.json), [`benchmarks/quickstart_smoke.json`](benchmarks/quickstart_smoke.json) |
 
 The LCSA kernel is a validated drop-in *alternative* to the official CUDA kernel (which already runs at ~78% of achievable throughput on this chip), not the source of the speedup.
 
@@ -97,8 +159,13 @@ Every operator passed a three-level gate before integration:
 
 ## FAQ
 
+- **Do I need to build Block-Sparse-Attention?** No. Importing this pack installs a Triton stand-in for the `block_sparse_attn` module when the real package is absent, so the FlashVSR DiT imports cleanly on a stock 4090. If you do have the CUDA extension installed it wins automatically (`FS89_LCSA=auto`, default); `FS89_LCSA=triton|bsa` forces either side. Measured end-to-end delta between the two: ~1.5–3% ([`benchmarks/quickstart_smoke.json`](benchmarks/quickstart_smoke.json)).
+- **First run fails with `fatal error: Python.h: No such file or directory`?** Your machine has no Python dev headers, which Triton needs to JIT-compile its kernel on first use (this is a Triton-wide requirement, not specific to this pack). Install the headers matching your interpreter — Debian/Ubuntu system Python: `sudo apt install python3-dev`; a non-system interpreter (e.g. 3.13): `sudo apt install python3.13-dev`. Then rerun; compilation happens once and is cached.
+- **Why does the install pull in `ftfy`?** It's needed by the text-encoder path (upstream lists it in its own requirements but it's easy to miss — so this pack declares it). Similarly, diffsynth imports `modelscope` at import time but never calls it when loading the release weights locally; the pack stubs it and raises a clear error only if the downloader path is ever actually used. Details in [`docs/integration.md`](docs/integration.md#compatibility-layers-installed-at-pack-import).
 - **Which GPUs?** FP8 paths need sm_89 tensor cores (RTX 4090 / 4090 D, L40, RTX 6000 Ada). The bf16 Triton kernels and LCSA run on anything sm_80+ (A100, 3090, …); on non-Ada cards convert with `parts=()` and keep the fused norms + channels_last.
 - **Other resolutions / models?** Numbers here are pinned to the 1408×768 / 1-step workload. The operators are shape-generic (per-tensor scales, no baked shapes); expect the FP8 GEMM gain to shift with the M dimension (see the M=18k vs M=55k rows).
+- **Very short clips?** The streaming loop needs `num_frames ≥ 25` (upstream constraint: `(F-1)//8 - 2` iterations). `examples/run_flashvsr.py` and the ComfyUI node hold the last frame until the minimum is reached.
+- **Timing scope?** Input prep (CPU bicubic ×4 + padding, ~1.5 s per clip) is reported separately from `pipe()` in the runner output — only the `pipe()` window is the comparable number. See `timing_scope` in [`benchmarks/quickstart_smoke.json`](benchmarks/quickstart_smoke.json). Also: the **first** run on a machine is markedly slower — Triton JIT-compiles its kernels inside the `pipe()` window (measured on the demo clip: 9.5 FPS cold → 13.7 warm). Compilation is cached, so from the second run on you'll see the headline numbers, which are warm medians of the pinned 89-frame workload (methodology in [`docs/benchmarks.md`](docs/benchmarks.md)).
 - **Training?** No — inference only; all converted params are frozen.
 - **Why isn't LCSA the speedup?** The official CUDA BSA kernel already runs at ~78% of achievable throughput on this chip; the wins are in the elementwise/norm/linear paths.
 

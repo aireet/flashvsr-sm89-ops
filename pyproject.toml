@@ -4,12 +4,33 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "flashvsr-sm89-ops"
-version = "0.1.0"
+version = "0.2.0"
 description = "Triton / FP8 operator pack: FlashVSR v1.1 at ~1.3x on a single RTX 4090 (sm_89)"
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "Apache-2.0" }
-dependencies = ["torch>=2.6.0", "triton>=3.2.0"]
+dependencies = [
+    "torch>=2.6.0",
+    "triton>=3.2.0",
+    # diffsynth's T5 prompt path imports ftfy (listed in upstream FlashVSR's
+    # requirements.txt but easy to miss when installing only this pack)
+    "ftfy",
+    # the diffsynth runtime the pipeline needs (upstream FlashVSR's own
+    # requirements.txt pins numpy/torch versions that no longer install on
+    # current Python; these are deliberately unpinned — torch 2.6 -> 2.14 and
+    # transformers 4.x -> 5.x are all verified)
+    "transformers",
+    "einops",
+    "safetensors",
+    "numpy",
+    "pillow",
+    "tqdm",
+    "imageio",
+    "imageio-ffmpeg",
+    "huggingface_hub",
+    "torchvision",
+    "sentencepiece",
+]
 
 [tool.setuptools.packages.find]
 include = ["flashvsr_sm89_ops*"]

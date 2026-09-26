@@ -59,3 +59,44 @@ Current evidence: [`benchmarks/quality_cmp.json`](../benchmarks/quality_cmp.json
 - `torch.profiler` `key_averages()` **double-counts** overlapping kernels — aggregate the chrome trace by kernel name instead.
 - Bucketing trace kernels by name substring mis-buckets: cuDNN conv fprop kernels carry `cutlass` in their names, and the flash-attention kernel carries `cutlass` too. We briefly "found" a mystery 0.8s bf16 GEMM this way; there wasn't one.
 - `triton.testing.do_bench` for anything under ~1 ms; CUDA events for pipeline-level.
+
+## Quickstart end-to-end (pristine-clone A/B)
+
+[`examples/run_flashvsr.py`](../examples/run_flashvsr.py) runs the pack on a
+pristine upstream clone with zero source edits; `--no-ops` runs the stock
+pipeline in the same process for A/B:
+
+```bash
+git clone https://github.com/OpenImagingLab/FlashVSR /tmp/FlashVSR
+python examples/run_flashvsr.py --flashvsr-root /tmp/FlashVSR \
+    --input assets/demo/example0_input.mp4 --out-dir /tmp/out
+python examples/run_flashvsr.py --flashvsr-root /tmp/FlashVSR \
+    --input assets/demo/example0_input.mp4 --out-dir /tmp/out_stock --no-ops
+```
+
+Evidence: [`benchmarks/quickstart_smoke.json`](../benchmarks/quickstart_smoke.json) —
+same-session A/B, gen-only timing (input prep is CPU bicubic and is reported
+separately; single runs, no repeats): stock 7640 ms / 11.13 FPS / 13.1 GB vs
+pack **6137 ms / 13.85 FPS / 11.3 GB** with the zero-compile Triton attention
+(~6045 ms with the CUDA BSA extension — backend delta 1.5-3%). That is
+**1.25× same-session** against published session medians of 1.30×. Quality on
+the same clip: PSNR 36.75 dB, LPIPS 0.017 vs stock; reruns are bit-identical
+for a fixed seed.
+
+### Fresh-session harness rerun (enable() path, 4 official clips)
+
+[`benchmarks/pr2_harness_*.json`](../benchmarks/) — the published
+`PINNED_LQ=352x192` methodology (warmup 1, iters 3, CUDA events around
+`pipe()` only) re-run on a pristine upstream clone against `enable()`, in a
+fresh process per config:
+
+| config | FPS (4 clips) | peak VRAM | ratio vs same-session stock |
+|---|---|---|---|
+| stock (`--no-ops`) | 11.45–11.49 | 12.96–13.26 GB | 1.00× |
+| `enable()`, CUDA BSA | 14.60–14.67 | 11.16–11.45 GB | 1.275–1.278× |
+| `enable()`, Triton stub | 14.42–14.45 | 11.16–11.45 GB | 1.258–1.260× |
+
+Stock FPS matches the published session (11.43–11.49) exactly; the pack
+configs run ~2% under the published medians (14.84–14.96), so the 1.30×
+published ratio reproduces as 1.26–1.28× same-session — session noise, and
+the Triton-vs-CUDA-BSA delta stays at ~1.4%.
