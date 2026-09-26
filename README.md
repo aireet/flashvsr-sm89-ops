@@ -121,9 +121,9 @@ Restart ComfyUI (or use ComfyUI-Manager's *Install from Git*). No pip step — t
 
 A complete graph ships in [`comfyui/workflows/flashvsr_minimal.json`](comfyui/workflows/flashvsr_minimal.json) — drop it on the canvas, put your clip in `ComfyUI/input/`, and Queue. Output snaps to the model's 128-px grid (16:9 `1080p` → 1920×1024), keeps the frame rate, and carries audio through when the frame count is unchanged. First run provisions itself (FlashVSR checkout, ~6.5 GB weights, one-time Triton JIT — same compiler requirement as the quickstart above).
 
-- The node shows per-block progress in the UI while it runs.
+- The node shows per-block progress in the UI while it runs (tiled renders keep counting across tiles on one bar).
 - It plays by ComfyUI's memory rules: before a run it frees models other nodes left on the GPU; after the run it parks its pipeline in CPU RAM — safe to chain after a video-generation node on the same card.
-- VRAM scales with output pixels (~3 s clip, weights included): **720p ≈ 9 GB · 1080p ≈ 19 GB · 2K ≈ 33 GB**; 4K does not fit even a 48 GB card. On a 24 GB card `1080p` is the practical ceiling.
+- VRAM tracks the largest tile, not the canvas (~3 s clip, weights included): **720p ≈ 9 GB · 1080p ≈ 19 GB · 2K ≈ 21 GB · 4K ≈ 20 GB**. Outputs above ~2.2 MP render automatically as overlapping spatial tiles (128-px grid, 256 px blend overlap, ~+13% wall time at 2K; measured in [`benchmarks/tiled_render.json`](benchmarks/tiled_render.json)) — so 4K fits a 24 GB card.
 - Short clips are padded by holding the last frame (the streaming model consumes blocks of 8); output follows the `8n+1` frame rule. Split longer videos with the core *Trim Video* node.
 - `COMFYUI_ROOT=/root/ComfyUI python comfyui/selftest.py <clip.mp4>` drives the node end-to-end outside the server.
 

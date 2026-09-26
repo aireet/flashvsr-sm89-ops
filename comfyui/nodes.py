@@ -191,19 +191,24 @@ def _streaming_progress(pipe, pbar):
     """Route the pipeline's streaming loop into ComfyUI's progress bar.
 
     The loop constructs tqdm(range(n)) directly, so swap the pipeline
-    module's tqdm symbol for an adapter that feeds the ComfyUI bar.
+    module's tqdm symbol for an adapter that feeds the ComfyUI bar; with
+    tiled rendering several pipeline calls share one bar and keep counting.
     """
     mod = sys.modules[type(pipe).__module__]
     saved = mod.tqdm
+    done = [0]  # blocks already consumed by earlier tiles
 
     class _Bar:
         def __init__(self, iterable):
             self._it = iter(iterable)
 
         def __iter__(self):
+            n = 0
             for i, item in enumerate(self._it):
+                n = i + 1
                 yield item
-                pbar.update_absolute(i + 1)
+                pbar.update_absolute(done[0] + n)
+            done[0] += n
 
         def update(self, n=1):
             pass
@@ -273,7 +278,9 @@ def _image_batch_to_lq(images, target_h=None, multiple=128):
         l, t = (sW - tW) // 2, (sH - tH) // 2
         up = up.crop((l, t, l + tW, t + tH))
         t32 = torch.from_numpy(np.asarray(up, np.uint8)).float().permute(2, 0, 1)
-        frames.append((t32 / 255.0 * 2.0 - 1.0).to(dtype=torch.bfloat16, device="cuda"))
+        # stays in CPU RAM: render_tiled uploads one tile's crop at a time,
+        # so a 4K canvas never parks 4 GiB of LQ on the GPU
+        frames.append((t32 / 255.0 * 2.0 - 1.0).to(dtype=torch.bfloat16))
     vid = torch.stack(frames, 0).permute(1, 0, 2, 3).unsqueeze(0)  # 1 C F H W
     return vid, tH, tW, F
 
@@ -309,9 +316,11 @@ class FlashVSRUpscale(io.ComfyNode):
                     "target_resolution",
                     options=list(cls._TARGET_HEIGHTS),
                     tooltip="Approximate output height. The output snaps to "
-                    "the model's 128px grid. Peak VRAM for a ~3 s clip: "
-                    "720p ≈ 9 GB, 1080p ≈ 19 GB, 2K ≈ 33 GB; 4K does not "
-                    "fit a 24 GB card."),
+                    "the model's 128px grid; larger canvases render as "
+                    "overlapping spatial tiles, so VRAM stays at one tile's "
+                    "cost. Measured peaks for a ~3 s clip: 720p ≈ 9 GB, "
+                    "1080p ≈ 19 GB, 2K ≈ 21 GB, 4K ≈ 20 GB — all inside a "
+                    "24 GB card."),
             ],
             outputs=[io.Video.Output()],
         )
@@ -336,16 +345,21 @@ class FlashVSRUpscale(io.ComfyNode):
 
         LQ, th, tw, F = _image_batch_to_lq(
             images, target_h=cls._TARGET_HEIGHTS[target_resolution])
-        print(f"[FlashVSR] {images.shape[0]} frames @ {images.shape[2]}x"
-              f"{images.shape[1]} -> {tw}x{th}, running {F} frames")
 
-        pbar = ProgressBar(max(1, (F - 1) // 8 - 2))  # the streaming loop's length
+        # beyond ~1080p the canvas is rendered as overlapping spatial tiles
+        # (flashvsr_sm89_ops.render_tiled) so VRAM stays at one tile's cost
+        from flashvsr_sm89_ops.tiling import plan_tiles, render_tiled
+        tiles = plan_tiles(tw, th)
+        print(f"[FlashVSR] {images.shape[0]} frames @ {images.shape[2]}x"
+              f"{images.shape[1]} -> {tw}x{th}, running {F} frames"
+              + (f" in {len(tiles)} spatial tiles" if len(tiles) > 1 else ""))
+
+        pbar = ProgressBar(max(1, (F - 1) // 8 - 2) * len(tiles))
         try:
             with _streaming_progress(pipe, pbar):
-                video_t = pipe(
-                    prompt="", negative_prompt="", cfg_scale=1.0,
-                    num_inference_steps=1, seed=cls._SEED, LQ_video=LQ,
-                    num_frames=F, height=th, width=tw,
+                video_t = render_tiled(
+                    pipe, LQ, prompt="", negative_prompt="", cfg_scale=1.0,
+                    num_inference_steps=1, seed=cls._SEED,
                     is_full_block=False, if_buffer=True,
                     topk_ratio=2.0 * 768 * 1280 / (th * tw),
                     kv_ratio=3.0, local_range=11, color_fix=True,
@@ -353,11 +367,11 @@ class FlashVSRUpscale(io.ComfyNode):
         except torch.cuda.OutOfMemoryError:
             _release_gpu(pipe)
             raise RuntimeError(
-                f"Out of GPU memory rendering {tw}x{th}. VRAM grows with "
-                f"output pixels; for a ~3 s clip expect roughly 720p ≈ 9 GB, "
-                f"1080p ≈ 19 GB, 2K ≈ 33 GB, and 4K does not fit even a "
-                f"48 GB card. Pick a smaller target_resolution or a shorter "
-                f"clip (Trim Video).") from None
+                f"Out of GPU memory rendering {tw}x{th}. Measured peaks for "
+                f"a ~3 s clip: 720p ≈ 9 GB, 1080p ≈ 19 GB, 2K ≈ 21 GB, "
+                f"4K ≈ 20 GB (tiled). Free up GPU memory (other apps, or "
+                f"nodes upstream running concurrently) or trim the clip "
+                f"shorter (Trim Video) and try again.") from None
         _release_gpu(pipe)
         # pipeline contract: [C,F,H,W] in [-1,1] -> ComfyUI IMAGE [F,H,W,C] 0..1
         out = ((video_t.float().clamp(-1, 1) + 1.0) * 0.5).permute(1, 2, 3, 0).cpu()
