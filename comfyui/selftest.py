@@ -7,7 +7,7 @@ Video node produces), and runs FlashVSRUpscale.execute through its public
 surface — video + target_resolution, nothing else — checking output shape,
 frame count, and the saved file.
 
-    COMFYUI_ROOT=/root/ComfyUI python selftest.py /path/smoke_input.mp4
+    COMFYUI_ROOT=/root/ComfyUI python comfyui/selftest.py /path/smoke_input.mp4
 """
 import os
 import sys
@@ -15,8 +15,8 @@ import types
 from fractions import Fraction
 
 sys.path.insert(0, os.environ.get("COMFYUI_ROOT", "/root/ComfyUI"))
-# our nodes.py must win the plain `import nodes` over ComfyUI's core nodes.py
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+# the repository root carries both the comfyui package and flashvsr_sm89_ops
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import imageio
 import numpy as np
@@ -31,7 +31,7 @@ sys.modules["folder_paths"] = types.SimpleNamespace(
     get_output_directory=lambda: os.environ.get("SELFTEST_OUT", "/tmp/comfy_selftest_out"),
 )
 
-import nodes as node_mod  # noqa: E402  (our nodes.py, after the stub)
+import comfyui.nodes as node_mod  # noqa: E402  (this repo's node pack)
 from comfy_api.latest import InputImpl, Types  # noqa: E402
 
 

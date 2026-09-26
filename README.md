@@ -119,13 +119,22 @@ Restart ComfyUI (or use ComfyUI-Manager's *Install from Git*). No pip step — t
 | `video` | — | the low-resolution clip, from the core *Load Video* node |
 | `target_resolution` | `1080p` | `720p` · `1080p` · `2K` · `4K` — roughly how tall the result should be |
 
-A complete graph ships in [`workflows/flashvsr_minimal.json`](workflows/flashvsr_minimal.json) — drop it on the canvas, put your clip in `ComfyUI/input/`, and Queue. Output snaps to the model's 128-px grid (16:9 `1080p` → 1920×1024), keeps the frame rate, and carries audio through when the frame count is unchanged. First run provisions itself (FlashVSR checkout, ~6.5 GB weights, one-time Triton JIT — same compiler requirement as the quickstart above).
+A complete graph ships in [`comfyui/workflows/flashvsr_minimal.json`](comfyui/workflows/flashvsr_minimal.json) — drop it on the canvas, put your clip in `ComfyUI/input/`, and Queue. Output snaps to the model's 128-px grid (16:9 `1080p` → 1920×1024), keeps the frame rate, and carries audio through when the frame count is unchanged. First run provisions itself (FlashVSR checkout, ~6.5 GB weights, one-time Triton JIT — same compiler requirement as the quickstart above).
 
 - The node shows per-block progress in the UI while it runs.
 - It plays by ComfyUI's memory rules: before a run it frees models other nodes left on the GPU; after the run it parks its pipeline in CPU RAM — safe to chain after a video-generation node on the same card.
 - VRAM scales with output pixels (~3 s clip, weights included): **720p ≈ 9 GB · 1080p ≈ 19 GB · 2K ≈ 33 GB**; 4K does not fit even a 48 GB card. On a 24 GB card `1080p` is the practical ceiling.
 - Short clips are padded by holding the last frame (the streaming model consumes blocks of 8); output follows the `8n+1` frame rule. Split longer videos with the core *Trim Video* node.
-- `COMFYUI_ROOT=/root/ComfyUI python selftest.py <clip.mp4>` drives the node end-to-end outside the server.
+- `COMFYUI_ROOT=/root/ComfyUI python comfyui/selftest.py <clip.mp4>` drives the node end-to-end outside the server.
+
+## Repository layout
+
+| Path | What it is |
+|---|---|
+| `flashvsr_sm89_ops/` | the operator pack (the pip package): kernels + the one-call `enable()` API |
+| `examples/` | direct Python usage — the zero-patch runner and per-operator snippets |
+| `comfyui/` | the ComfyUI node pack (`nodes.py`, selftest, sample workflow); the root `__init__.py` is ComfyUI's entry point into it |
+| `benchmarks/`, `docs/` | the data behind every number above, and the integration/kernel contracts |
 
 ## What's inside
 

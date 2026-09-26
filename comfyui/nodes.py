@@ -28,7 +28,9 @@ WEIGHT_FILES = (
     "config.json", "diffusion_pytorch_model_streaming_dmd.safetensors",
     "LQ_proj_in.ckpt", "model_index.json", "TCDecoder.ckpt", "Wan2.1_VAE.pth",
 )
-NODE_DIR = os.path.dirname(os.path.abspath(__file__))
+# repo root (this file lives in comfyui/) — keeps the fallback lookup
+# paths stable wherever the checkout is cloned
+NODE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 _PIPE = None          # loaded FlashVSRTinyPipeline (cached across runs)
 
