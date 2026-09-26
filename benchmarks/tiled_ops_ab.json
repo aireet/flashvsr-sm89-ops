@@ -1,0 +1,21 @@
+{
+  "what": "A/B of the sm89 operator pack on the TILED rendering path (2K 2560x1440, 85 frames, 2 spatial tiles, RTX 4090 D, container torch 2.13.0+cu130)",
+  "method": "same comfyui/nodes.py pipeline call via render_tiled; arm B sets FS89_FP8='' FS89_FUSED_ROPE=0 FS89_FUSED_ADALN=0 before import. LCSA backend is 'triton' (zero-compile stub) in BOTH arms, so the delta isolates FP8 linears + fused RoPE + fused AdaLN.",
+  "arm_ops_on": {
+    "applied": {"tcdec_channels_last": true, "fp8_linears": 300, "fp8_ffn_blocks": 30, "fused_rope": true, "fused_adaln": true, "lcsa_backend": "triton"},
+    "wall_s": 23.3,
+    "peak_gib": 18.98
+  },
+  "arm_ops_off": {
+    "applied": {"tcdec_channels_last": true, "fp8_linears": 0, "fp8_ffn_blocks": 0, "fused_rope": false, "fused_adaln": false, "lcsa_backend": "triton"},
+    "wall_s": 28.8,
+    "peak_gib": 20.28
+  },
+  "speedup_tiled": 1.24,
+  "notes": [
+    "Untiled headline on this machine class: 1.17-1.30x — the tiled delta is the same within run-to-run drift.",
+    "Ops are class-level forward rebinding + weight conversion, orthogonal to canvas slicing: every tile runs the fused kernels.",
+    "FP8 also cuts peak VRAM (18.98 vs 20.28 GiB) — smaller activations in the linears."
+  ],
+  "date": "2026-09-27"
+}
