@@ -7,7 +7,7 @@
 [![GPU](https://img.shields.io/badge/GPU-RTX_4090_(sm89)-green)]()
 [![arXiv](https://img.shields.io/badge/arXiv-2510.12747-b31b1b)](https://arxiv.org/abs/2510.12747)
 
-Drop-in operator pack that runs [FlashVSR v1.1 (Tiny)](https://github.com/OpenImagingLab/FlashVSR) at **~1.3× on a single RTX 4090**, with **lower peak VRAM** and a measured, gated quality budget. The official pipeline targets A100-class GPUs for its real-time claim; this pack brings streaming VSR to a consumer card at **14.4–15.0 FPS @ 1408×768** — **without compiling a single CUDA extension and without editing FlashVSR source** ([quickstart](#quickstart); [ComfyUI nodes](https://github.com/aireet/ComfyUI-FlashVSR-SM89)).
+Drop-in operator pack that runs [FlashVSR v1.1 (Tiny)](https://github.com/OpenImagingLab/FlashVSR) at **~1.3× on a single RTX 4090**, with **lower peak VRAM** and a measured, gated quality budget. The official pipeline targets A100-class GPUs for its real-time claim; this pack brings streaming VSR to a consumer card at **14.4–15.0 FPS @ 1408×768** — **without compiling a single CUDA extension and without editing FlashVSR source** ([quickstart](#quickstart); [ComfyUI node](#use-it-in-comfyui)).
 
 It packages five operators for the sm_89 (Ada) generation — fused RMSNorm+RoPE, fused AdaLN (LN+modulate / gate+add), FP8 E4M3 linears via cuBLASLt, a fused GELU→FP8 FFN mid-section, and channels_last/compile handling for the TCDecoder — plus a Triton block-sparse attention kernel matching the official CUDA BSA kernel within noise, and the benchmark data behind every number below.
 
@@ -96,7 +96,36 @@ x8, s = quantize_fp8(x)                  # fused absmax + E4M3 cast, (fp8, per-t
 
 Integration details and env flags: [`docs/integration.md`](docs/integration.md). Per-kernel API and numerics contracts: [`docs/kernels.md`](docs/kernels.md). Reproducing every number: [`docs/benchmarks.md`](docs/benchmarks.md).
 
-**ComfyUI?** There is a node pack: [ComfyUI-FlashVSR-SM89](https://github.com/aireet/ComfyUI-FlashVSR-SM89) — verified end-to-end on a live ComfyUI (torch 2.14 / triton 3.8 / transformers 5.17): load a clip, wire it into *FlashVSR Upscale 4x (sm89)*, save.
+**ComfyUI?** This repo is also a ComfyUI node — see [Use it in ComfyUI](#use-it-in-comfyui) below.
+
+## Use it in ComfyUI
+
+This repository doubles as a ComfyUI node pack — one node with the same two inputs as ComfyUI's built-in (cloud, paid) FlashVSR node, running locally on your own GPU:
+
+```bash
+cd ComfyUI/custom_nodes
+git clone https://github.com/aireet/flashvsr-sm89-ops.git
+```
+
+Restart ComfyUI (or use ComfyUI-Manager's *Install from Git*). No pip step — the node imports the operator pack from the cloned checkout itself.
+
+```
+[Load Video]  ->  [FlashVSR Video Upscale (sm89, local)]  ->  [Save Video]
+     core                      the only custom node                  core
+```
+
+| input | default | meaning |
+|---|---|---|
+| `video` | — | the low-resolution clip, from the core *Load Video* node |
+| `target_resolution` | `1080p` | `720p` · `1080p` · `2K` · `4K` — roughly how tall the result should be |
+
+A complete graph ships in [`workflows/flashvsr_minimal.json`](workflows/flashvsr_minimal.json) — drop it on the canvas, put your clip in `ComfyUI/input/`, and Queue. Output snaps to the model's 128-px grid (16:9 `1080p` → 1920×1024), keeps the frame rate, and carries audio through when the frame count is unchanged. First run provisions itself (FlashVSR checkout, ~6.5 GB weights, one-time Triton JIT — same compiler requirement as the quickstart above).
+
+- The node shows per-block progress in the UI while it runs.
+- It plays by ComfyUI's memory rules: before a run it frees models other nodes left on the GPU; after the run it parks its pipeline in CPU RAM — safe to chain after a video-generation node on the same card.
+- VRAM scales with output pixels (~3 s clip, weights included): **720p ≈ 9 GB · 1080p ≈ 19 GB · 2K ≈ 33 GB**; 4K does not fit even a 48 GB card. On a 24 GB card `1080p` is the practical ceiling.
+- Short clips are padded by holding the last frame (the streaming model consumes blocks of 8); output follows the `8n+1` frame rule. Split longer videos with the core *Trim Video* node.
+- `COMFYUI_ROOT=/root/ComfyUI python selftest.py <clip.mp4>` drives the node end-to-end outside the server.
 
 ## What's inside
 
