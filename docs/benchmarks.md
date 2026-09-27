@@ -100,3 +100,33 @@ Stock FPS matches the published session (11.43–11.49) exactly; the pack
 configs run ~2% under the published medians (14.84–14.96), so the 1.30×
 published ratio reproduces as 1.26–1.28× same-session — session noise, and
 the Triton-vs-CUDA-BSA delta stays at ~1.4%.
+
+## Spatial tiling (4K on a 24 GB card)
+
+Evidence: [`benchmarks/tiled_render.json`](../benchmarks/tiled_render.json)
+(seam contact sheet:
+[`benchmarks/tiled_render_seam.png`](../benchmarks/tiled_render_seam.png)),
+ops A/B: [`benchmarks/tiled_ops_ab.json`](../benchmarks/tiled_ops_ab.json).
+Contract and planner rules: [`docs/tiling.md`](tiling.md).
+
+```bash
+# offline tile-math suite (CPU): bucket plans, sweep invariants,
+# partition-of-unity blending, identity render through a fake pipe
+python comfyui/test_tiling.py
+
+# measured evidence — drives the node's own pipeline: 2K full-frame,
+# 2K tiled, 4K tiled; writes benchmarks/tiled_render.json
+COMFYUI_ROOT=/path/to/ComfyUI python comfyui/bench_tiled.py <clip.mp4>
+
+# ops A/B on the tiled path — flags are read at import time, so run
+# two separate processes:
+FS89_FP8= FS89_FUSED_ROPE=0 FS89_FUSED_ADALN=0 \
+    python comfyui/bench_tiled.py <clip.mp4>   # ops off (arm B)
+python comfyui/bench_tiled.py <clip.mp4>       # ops on  (arm A, default)
+```
+
+Headline rows (RTX 4090 D, 85-frame clip): 2K 2560×1408 untiled 32.8 GiB /
+20.4 s vs tiled 20.7 GiB / 22.8 s (+12%); 4K 3840×2048 untiled OOM at
+44.8 GiB vs tiled **19.96 GiB** / 60.9 s (5 strips of 1024×2048). Ops A/B on
+the tiled 2K path: 23.3 s / 18.98 GiB (ops on) vs 28.8 s / 20.28 GiB
+(fused+FP8 off) = **1.24× retained**.
