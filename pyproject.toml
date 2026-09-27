@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "flashvsr-sm89-ops"
-version = "0.2.0"
-description = "Triton / FP8 operator pack: FlashVSR v1.1 at ~1.3x on a single RTX 4090 (sm_89)"
+version = "0.2.1"
+description = "4K video super-resolution on a 24 GB RTX 4090 — a free, local ComfyUI FlashVSR node (VIDEO in, VIDEO out) plus a Triton/FP8 operator pack at ~1.3x. No CUDA build."
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "Apache-2.0" }
