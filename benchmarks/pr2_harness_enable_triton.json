@@ -1,0 +1,70 @@
+{
+  "./inputs/example0.mp4": {
+    "frames": 89,
+    "res": "1408x768",
+    "fps_in": 30,
+    "times_ms": [
+      6160.7,
+      6161.5,
+      6161.9
+    ],
+    "fps": [
+      14.45,
+      14.44,
+      14.44
+    ],
+    "fps_best": 14.45,
+    "peak_vram_gb": 11.31
+  },
+  "./inputs/example1.mp4": {
+    "frames": 97,
+    "res": "1408x768",
+    "fps_in": 30,
+    "times_ms": [
+      6710.7,
+      6712.8,
+      6714.8
+    ],
+    "fps": [
+      14.45,
+      14.45,
+      14.45
+    ],
+    "fps_best": 14.45,
+    "peak_vram_gb": 11.45
+  },
+  "./inputs/example2.mp4": {
+    "frames": 97,
+    "res": "1408x768",
+    "fps_in": 30,
+    "times_ms": [
+      6726.5,
+      6732.3,
+      6728.0
+    ],
+    "fps": [
+      14.42,
+      14.41,
+      14.42
+    ],
+    "fps_best": 14.42,
+    "peak_vram_gb": 11.45
+  },
+  "./inputs/example3.mp4": {
+    "frames": 81,
+    "res": "1408x768",
+    "fps_in": 30,
+    "times_ms": [
+      5609.3,
+      5614.0,
+      5614.7
+    ],
+    "fps": [
+      14.44,
+      14.43,
+      14.43
+    ],
+    "fps_best": 14.44,
+    "peak_vram_gb": 11.16
+  }
+}

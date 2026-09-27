@@ -1,0 +1,40 @@
+{
+  "input": "example0_input.mp4",
+  "input_frames": 85,
+  "gpu": "NVIDIA GeForce RTX 4090 D",
+  "2k": {
+    "canvas": [
+      2560,
+      1408
+    ],
+    "tiles_full": 1,
+    "tiles_tiled": 2,
+    "psnr_tiled_vs_full_db": 31.567,
+    "seam_col_err": 0.01869,
+    "global_col_err_max": 0.027,
+    "full_s": 20.4,
+    "full_peak_gib": 32.79,
+    "tiled_s": 22.8,
+    "tiled_peak_gib": 20.69,
+    "seam_png": "tiled_render_seam.png"
+  },
+  "4k": {
+    "canvas": [
+      3840,
+      2048
+    ],
+    "tiles": 5,
+    "tile_size": [
+      1024,
+      2048
+    ],
+    "s": 60.9,
+    "peak_gib": 19.96,
+    "frames": 85,
+    "range": [
+      0.0,
+      1.0
+    ]
+  },
+  "resident_after_gib": 2.17
+}

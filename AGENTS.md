@@ -17,6 +17,8 @@ Instructions for AI coding agents working in this repository.
 
 ```bash
 pip install -e . && python -c "import flashvsr_sm89_ops"          # smoke
+# quickstart integration (needs $FLASHVSR_ROOT + weights; see examples/)
+python examples/run_flashvsr.py --flashvsr-root "$FLASHVSR_ROOT" --input <clip> --no-download
 # LCSA parity + perf (files use flat imports — run from inside the dir)
 cd flashvsr_sm89_ops/lcsa && python test_correctness.py --perf
 ```
