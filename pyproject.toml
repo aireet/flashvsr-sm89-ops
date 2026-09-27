@@ -34,3 +34,14 @@ dependencies = [
 
 [tool.setuptools.packages.find]
 include = ["flashvsr_sm89_ops*"]
+
+# ComfyUI Registry metadata (registry.comfy.org) — read by `comfy node publish`,
+# ignored by pip. PublisherId must be created once at registry.comfy.org with
+# your GitHub account, then `comfy node publish` from the repo root lists the
+# pack in ComfyUI-Manager for one-click install.
+[tool.comfy]
+PublisherId = "aireet"
+DisplayName = "FlashVSR Video Upscale (sm89, local)"
+Icon = ""
+Repository = "https://github.com/aireet/flashvsr-sm89-ops"
+Tags = ["video", "upscaler", "4k"]
