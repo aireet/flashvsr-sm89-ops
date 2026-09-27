@@ -72,11 +72,9 @@ What the node does for you, automatically:
 
 Three commands, no source edits. The reference runner mirrors the official example 1:1 (same input prep, same pipeline call, same output naming), auto-downloads weights (~6.5 GB, once, from HuggingFace) and prints per-clip timing:
 
-> **Where to install from:** these commands use the `feat/quickstart-zero-compile` branch, which carries the quickstart (PR #2). After that PR merges, the plain repo URL works identically.
-
 ```bash
 git clone https://github.com/OpenImagingLab/FlashVSR
-git clone -b feat/quickstart-zero-compile https://github.com/aireet/flashvsr-sm89-ops
+git clone https://github.com/aireet/flashvsr-sm89-ops
 pip install ./flashvsr-sm89-ops
 
 python flashvsr-sm89-ops/examples/run_flashvsr.py \
