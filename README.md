@@ -121,11 +121,23 @@ Restart ComfyUI (or use ComfyUI-Manager's *Install from Git*). No pip step — t
 
 A complete graph ships in [`comfyui/workflows/flashvsr_minimal.json`](comfyui/workflows/flashvsr_minimal.json) — drop it on the canvas, put your clip in `ComfyUI/input/`, and Queue. Output snaps to the model's 128-px grid (16:9 `1080p` → 1920×1024), keeps the frame rate, and carries audio through when the frame count is unchanged. First run provisions itself (FlashVSR checkout, ~6.5 GB weights, one-time Triton JIT — same compiler requirement as the quickstart above).
 
+![The whole workflow: Load Video → FlashVSR Video Upscale (sm89, local) → Save Video](docs/images/comfyui_workflow.jpg)
+
 - The node shows per-block progress in the UI while it runs (tiled renders keep counting across tiles on one bar).
 - It plays by ComfyUI's memory rules: before a run it frees models other nodes left on the GPU; after the run it parks its pipeline in CPU RAM — safe to chain after a video-generation node on the same card.
 - VRAM tracks the largest tile, not the canvas (~3 s clip, weights included): **720p ≈ 9 GB · 1080p ≈ 19 GB · 2K ≈ 21 GB · 4K ≈ 20 GB**. Outputs above ~2.2 MP render automatically as overlapping spatial tiles (128-px grid, 256 px blend overlap, ~+13% wall time at 2K; measured in [`benchmarks/tiled_render.json`](benchmarks/tiled_render.json)) — so 4K fits a 24 GB card.
 - Short clips are padded by holding the last frame (the streaming model consumes blocks of 8); output follows the `8n+1` frame rule. Split longer videos with the core *Trim Video* node.
 - `COMFYUI_ROOT=/root/ComfyUI python comfyui/selftest.py <clip.mp4>` drives the node end-to-end outside the server.
+
+**Case: 352×192 in → 4K out, on a 24 GB card.** Hit Run — the canvas renders as 5 overlapping tiles (~61 s on a 4090 D, 19.96 GiB peak), the node streams per-tile progress into the UI on one bar, and the result lands in *Save Video* with its own preview player:
+
+| rendering | done |
+|---|---|
+| ![4K render in progress: per-tile progress on one bar, node highlighted](docs/images/comfyui_rendering_4k.jpg) | ![Job completed, 4K preview in the Save Video node](docs/images/comfyui_done_4k.jpg) |
+
+Same clip, same detail crop — bicubic ×4 vs this repo at 3840×2048 (tile seams invisible; data in [`benchmarks/tiled_render.json`](benchmarks/tiled_render.json)):
+
+![input 352x192 bicubic x4 vs FlashVSR sm89 3840x2048](docs/images/before_after.png)
 
 ## Repository layout
 
