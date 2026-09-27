@@ -18,7 +18,7 @@ from .fp8_quant import quantize_fp8, FP8_MAX
 from .fp8_linear import FP8Linear, convert_linears_fp8
 from .fp8_ffn import FP8FFN, convert_ffn_fp8
 from .integrate import enable
-from .tiling import plan_tiles, render_tiled, tile_weight
+from .tiling import auto_tile_limits, plan_tiles, render_tiled, tile_weight
 
 __all__ = [
     "enable",
@@ -33,6 +33,7 @@ __all__ = [
     "convert_ffn_fp8",
     "plan_tiles",
     "render_tiled",
+    "auto_tile_limits",
     "tile_weight",
     "active_backend",
 ]

@@ -173,6 +173,18 @@ def _warm_gpu(pipe):
     pipe.TCDecoder.to("cuda")
 
 
+def _free_vram():
+    """Driver-visible free VRAM in bytes (after giving our cache back), or None."""
+    if not torch.cuda.is_available():
+        return None
+    try:
+        torch.cuda.empty_cache()
+        free, _total = torch.cuda.mem_get_info()
+        return free
+    except Exception:
+        return None
+
+
 def _release_gpu(pipe):
     """Park the pipeline in CPU RAM so other nodes get their VRAM back.
 
@@ -320,7 +332,8 @@ class FlashVSRUpscale(io.ComfyNode):
                     "overlapping spatial tiles, so VRAM stays at one tile's "
                     "cost. Measured peaks for a ~3 s clip: 720p ≈ 9 GB, "
                     "1080p ≈ 19 GB, 2K ≈ 21 GB, 4K ≈ 20 GB — all inside a "
-                    "24 GB card."),
+                    "24 GB card, and tiles auto-size down to fit smaller "
+                    "cards."),
             ],
             outputs=[io.Video.Output()],
         )
@@ -337,9 +350,15 @@ class FlashVSRUpscale(io.ComfyNode):
         wanvsr = os.path.join(root, "examples", "WanVSR")
         weights_dir = ensure_weights(wanvsr)
 
-        # ComfyUI-style memory handoff: let the model manager free whatever
-        # upstream nodes left on the GPU before our pipeline comes in.
-        mm.unload_all_models()
+        # Make room only when the card needs it: evicting upstream models
+        # costs a re-load on their next run, so on a roomy card they stay.
+        # Every bucket peaks at one ~2.1 MP tile (~20 GiB) plus weights, so
+        # that is the budget we must be able to offer; otherwise hand back
+        # whatever the model manager is holding.
+        free = _free_vram()
+        if free is not None and free < (22 << 30):
+            mm.unload_all_models()
+            torch.cuda.empty_cache()
         pipe = _load_pipeline(root, wanvsr, weights_dir)
         _warm_gpu(pipe)
 
@@ -347,12 +366,16 @@ class FlashVSRUpscale(io.ComfyNode):
             images, target_h=cls._TARGET_HEIGHTS[target_resolution])
 
         # beyond ~1080p the canvas is rendered as overlapping spatial tiles
-        # (flashvsr_sm89_ops.render_tiled) so VRAM stays at one tile's cost
-        from flashvsr_sm89_ops.tiling import plan_tiles, render_tiled
-        tiles = plan_tiles(tw, th)
+        # (flashvsr_sm89_ops.render_tiled) so VRAM stays at one tile's cost —
+        # sized to the VRAM actually left now that our weights are resident:
+        # roomy cards keep the 24 GB defaults, small cards get smaller tiles
+        from flashvsr_sm89_ops.tiling import auto_tile_limits, plan_tiles, render_tiled
+        tile_threshold, tile_target = auto_tile_limits(num_frames=F)
+        tiles = plan_tiles(tw, th, target=tile_target, threshold=tile_threshold)
         print(f"[FlashVSR] {images.shape[0]} frames @ {images.shape[2]}x"
               f"{images.shape[1]} -> {tw}x{th}, running {F} frames"
-              + (f" in {len(tiles)} spatial tiles" if len(tiles) > 1 else ""))
+              + (f" in {len(tiles)} spatial tiles (tile <= {tile_target / 1e6:.2f} MP)"
+                 if len(tiles) > 1 else ""))
 
         pbar = ProgressBar(max(1, (F - 1) // 8 - 2) * len(tiles))
         try:
@@ -363,15 +386,17 @@ class FlashVSRUpscale(io.ComfyNode):
                     is_full_block=False, if_buffer=True,
                     topk_ratio=2.0 * 768 * 1280 / (th * tw),
                     kv_ratio=3.0, local_range=11, color_fix=True,
+                    tile_threshold=tile_threshold, tile_target=tile_target,
                 )
         except torch.cuda.OutOfMemoryError:
             _release_gpu(pipe)
             raise RuntimeError(
                 f"Out of GPU memory rendering {tw}x{th}. Measured peaks for "
                 f"a ~3 s clip: 720p ≈ 9 GB, 1080p ≈ 19 GB, 2K ≈ 21 GB, "
-                f"4K ≈ 20 GB (tiled). Free up GPU memory (other apps, or "
-                f"nodes upstream running concurrently) or trim the clip "
-                f"shorter (Trim Video) and try again.") from None
+                f"4K ≈ 20 GB (tiled; tiles auto-size to your free VRAM). "
+                f"Free up GPU memory (other apps, or nodes upstream running "
+                f"concurrently) or trim the clip shorter (Trim Video) and "
+                f"try again.") from None
         _release_gpu(pipe)
         # pipeline contract: [C,F,H,W] in [-1,1] -> ComfyUI IMAGE [F,H,W,C] 0..1
         out = ((video_t.float().clamp(-1, 1) + 1.0) * 0.5).permute(1, 2, 3, 0).cpu()

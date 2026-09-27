@@ -54,6 +54,34 @@ chosen so **adjacent ramps sum to exactly 1** across every overlap — a
 partition of unity, verified offline to atol 1e-5 over canvas sweeps. The
 blended result is bit-faithful to the tiles; nothing is double-drawn.
 
+## Sizing to the card (`auto_tile_limits`)
+
+The defaults above assume a 24 GB card. `auto_tile_limits(num_frames=F)`
+probes the VRAM that is actually free (`torch.cuda.mem_get_info` after
+`empty_cache`) and shrinks both constants to fit, so smaller cards tile more
+aggressively instead of OOMing:
+
+- target scales with the measured VRAM model — `8.6 GiB/MP × F/85` of free
+  budget (minus a 1.25 GiB safety margin), clamped to at most the defaults
+  and floored at 0.64 MP;
+- the threshold follows the target, so a full-frame canvas the card cannot
+  afford (e.g. 1080p ≈ 19 GB on a 16 GB card) is tiled too — measured case:
+  16 GB card → 1080p as two 1152×1024 strips at ~1.2 MP;
+- a roomy card gets the defaults unchanged, and any caller without CUDA gets
+  the defaults blindly — the probe never *raises*.
+
+The ComfyUI node pairs this with need-based eviction: it checks free VRAM
+first and only calls `unload_all_models()` when the card could not offer the
+~22 GiB budget any bucket needs — on a roomy card upstream models stay
+resident and their next run is instant.
+
+```python
+from flashvsr_sm89_ops import auto_tile_limits
+
+threshold, target = auto_tile_limits(num_frames=F)
+tiles = plan_tiles(W, H, target=target, threshold=threshold)
+```
+
 ## Per-tile pipeline call
 
 Each tile is the *same* `pipe(...)` call you would issue for an

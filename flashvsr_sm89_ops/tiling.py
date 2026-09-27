@@ -27,10 +27,59 @@ TILE_THRESHOLD = 2_200_000
 # per-tile pixel budget: ~1.9 GiB fixed + 8.6 GiB/MP -> ~20 GiB peak, which
 # fits a 24 GB card with headroom
 TILE_TARGET = 2_100_000
+# the VRAM model behind the defaults: activation GiB per output megapixel for
+# the reference 85-frame clip, ~linear in frame count
+_GIB_PER_MP = 8.6
+_REFERENCE_FRAMES = 85
+# kept aside for allocator fragmentation and decode spikes
+_SAFETY_GIB = 1.25
+# never plan tiles below this (a 512-px strip still renders); a card that
+# cannot offer even this much goes to the run's own OOM message instead
+_TILE_FLOOR = 640_000
 
 
 def _snap_up(v, mult=MULT):
     return -(-v // mult) * mult
+
+
+def _limits_for_free_bytes(free_bytes, num_frames=_REFERENCE_FRAMES,
+                           safety_gib=_SAFETY_GIB):
+    """(threshold, target) for `free_bytes` of VRAM, or None if it is spent.
+
+    Pure math (no CUDA), so it is unit-testable. The reference card (24 GB,
+    ~20 GiB usable for tiles) lands on the module defaults; tighter budgets
+    shrink the target proportionally to the measured VRAM model, and the
+    threshold follows so full-frame canvases the card cannot afford are
+    tiled too.
+    """
+    budget = free_bytes - int(safety_gib * 2**30)
+    if budget <= 0:
+        return None
+    gib_per_mp = _GIB_PER_MP * max(num_frames, 1) / _REFERENCE_FRAMES
+    target = min(TILE_TARGET, int(budget / (gib_per_mp * 2**30) * 1e6))
+    target = max(target, _TILE_FLOOR)
+    return min(TILE_THRESHOLD, target), target
+
+
+def auto_tile_limits(num_frames=_REFERENCE_FRAMES, device="cuda",
+                     safety_gib=_SAFETY_GIB):
+    """(threshold, target) sized to the VRAM actually free right now.
+
+    Call after the pipeline weights are resident — they belong to the "not
+    free" side of the ledger, so the tiles are sized to what is genuinely
+    left. A roomy card gets the module defaults unchanged; a small card gets
+    smaller tiles instead of an OOM. Falls back to the defaults whenever the
+    probe is impossible (no CUDA, driver error).
+    """
+    if device != "cuda" or not torch.cuda.is_available():
+        return TILE_THRESHOLD, TILE_TARGET
+    try:
+        torch.cuda.empty_cache()
+        free, _total = torch.cuda.mem_get_info()
+    except Exception:
+        return TILE_THRESHOLD, TILE_TARGET
+    limits = _limits_for_free_bytes(free, num_frames, safety_gib)
+    return limits if limits is not None else (TILE_THRESHOLD, TILE_TARGET)
 
 
 def _strip_starts(canvas, piece, n):

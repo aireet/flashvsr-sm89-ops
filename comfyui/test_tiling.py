@@ -11,6 +11,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import torch
 
 from flashvsr_sm89_ops.tiling import (MULT, OVERLAP, TILE_TARGET, TILE_THRESHOLD,
+                                      _limits_for_free_bytes, auto_tile_limits,
                                       plan_tiles, render_tiled, tile_weight)
 
 
@@ -90,9 +91,36 @@ def test_render_identity():
     print(f"[tiling] identity render exact (max diff {d:.2e}), calls {calls}")
 
 
+def test_vram_sizing():
+    """auto_tile_limits: roomy card keeps defaults, tight card shrinks both."""
+    G = 2**30
+    # reference card (24 GB, ~20 GiB usable after weights): default target,
+    # with the threshold following it down (a 2.1-2.2 MP canvas now tiles —
+    # strictly safer on the card that barely fits it)
+    th20, tg20 = _limits_for_free_bytes(20 * G, 85)
+    assert tg20 == TILE_TARGET and th20 == tg20, (th20, tg20)
+    # a 16 GB card (~13 GiB free): tighter target, threshold follows -> 1080p tiles
+    th16, tg16 = _limits_for_free_bytes(13 * G, 85)
+    assert tg16 < TILE_TARGET and th16 == tg16, (th16, tg16)
+    check_plan(1920, 1024, plan_tiles(1920, 1024, target=tg16, threshold=th16), True)
+    # longer clips shrink further, shorter clips never exceed the default
+    assert _limits_for_free_bytes(13 * G, 169)[1] <= tg16
+    assert _limits_for_free_bytes(13 * G, 25)[1] <= TILE_TARGET
+    # barely-any-budget -> floored target, and the planner still covers the canvas
+    th0, tg0 = _limits_for_free_bytes(int(4.5 * G), 85)
+    assert tg0 == 640_000 and th0 == tg0, (th0, tg0)
+    check_plan(1920, 1024, plan_tiles(1920, 1024, target=tg0, threshold=th0), True)
+    # no budget at all -> None; the CUDA-less probe path returns the defaults
+    assert _limits_for_free_bytes(0, 85) is None
+    assert auto_tile_limits(device="cpu") == (TILE_THRESHOLD, TILE_TARGET)
+    print(f"[tiling] sizing: 16G-card 1080p plan -> {plan_tiles(1920, 1024, target=tg16, threshold=th16)}"
+          f" (target {tg16 / 1e6:.2f} MP vs {TILE_TARGET / 1e6:.2f} default)")
+
+
 if __name__ == "__main__":
     test_buckets()
     test_sweep()
     test_weights_partition_of_unity()
     test_render_identity()
+    test_vram_sizing()
     print("[tiling] PASS")
