@@ -29,7 +29,7 @@ Tiling is a memory technique and the operators are a speed technique — they st
 | **Quality** | LPIPS 0.011–0.012 vs official outputs (gate ≤ 0.05); tile seams below global noise | [`quality_cmp.json`](benchmarks/quality_cmp.json), [`tiled_render.json`](benchmarks/tiled_render.json) |
 
 
-*The 4K wall time above predates the input-preparation change and should be regenerated with `comfyui/bench_tiled.py` on the rig; the moved part is the node's input preparation (see [`input_prep_ab.json`](benchmarks/input_prep_ab.json)).*
+*The wall times above predate the input-preparation change: in [`tiled_render.json`](benchmarks/tiled_render.json) the 4K `s` and the 2K `full_s`/`tiled_s` numbers all include the node's input preparation, which this change speeds up (see [`input_prep_ab.json`](benchmarks/input_prep_ab.json)). Regenerate that JSON with `comfyui/bench_tiled.py` on the rig — the pack ratios (1.30×, 1.24×) are unaffected because both arms of those A/Bs share the same input path.*
 
 ## Use it in ComfyUI
 
