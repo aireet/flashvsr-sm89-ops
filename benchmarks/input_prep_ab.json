@@ -22,5 +22,5 @@
       "bit_identical": true
     }
   },
-  "stale_number": "README's 4K e2e row (benchmarks/tiled_render.json, ~61 s) was recorded before this change; regenerate it with comfyui/bench_tiled.py on the 4090 rig \u2014 the moved part is exactly this node-side input preparation."
+  "scope": "Applies to the ComfyUI node's host paths only. comfyui/bench_tiled.py times render_tiled alone (make_lq runs outside its timer), so benchmarks/tiled_render.json and every ratio in the README are unaffected \u2014 this change makes the node end-to-end faster by the prep delta, which that JSON does not measure."
 }

@@ -51,6 +51,8 @@ Reference results (same session, RTX 4090 D): `headtohead_orig.json` 7749/8468/8
 
 All three are host-side only: no kernel, no numerics change (bit-identical outputs verified by sha256).
 
+`bench_tiled.py` times `render_tiled` only — `_image_batch_to_lq` runs outside its timer — so `tiled_render.json` and the pack ratios are unaffected by the first two rows; they show up as node end-to-end time, not in that JSON.
+
 ## Quality gate (run after ANY operator change)
 
 Generate outputs for ≥ 2 clips with the patched pipeline, compare against official-pipeline outputs:
