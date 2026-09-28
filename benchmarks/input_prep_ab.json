@@ -1,5 +1,5 @@
 {
-  "what": "A/B of the ComfyUI node's input preparation (_image_batch_to_lq, 81 frames -> 3840x2048 canvas LQ) with the per-frame Pillow x4 bicubic pooled and the per-frame conversion fused. Pure host code: no GPU involved.",
+  "what": "A/B of the ComfyUI node's host paths: input preparation (per-frame Pillow x4 bicubic, now pooled + fused conversions) and the [-1,1] -> [0,1] output conversion (now in place).",
   "method": "identical input tensor torch.rand(81, 512, 960, 3) (target_h=2048); arm 'serial' is the pre-change implementation, arm 'pooled' is HEAD. sha256 over the returned bf16 LQ bytes proves bit-identity. min of 2 timed runs per arm; container 48-core CPU, torch 2.14.0+cpu.",
   "arm_serial": {
     "wall_s": 8.63,
@@ -22,5 +22,41 @@
       "bit_identical": true
     }
   },
-  "scope": "Applies to the ComfyUI node's host paths only. comfyui/bench_tiled.py times render_tiled alone (make_lq runs outside its timer), so benchmarks/tiled_render.json and every ratio in the README are unaffected \u2014 this change makes the node end-to-end faster by the prep delta, which that JSON does not measure."
+  "scope": "Applies to the ComfyUI node's host paths only. comfyui/bench_tiled.py times render_tiled alone (make_lq runs outside its timer), so benchmarks/tiled_render.json and every ratio in the README are unaffected \u2014 this change makes the node end-to-end faster by the prep delta, which that JSON does not measure.",
+  "pod_run": {
+    "why": "measured through the same code path as comfyui/bench_tiled.py (official init_pipeline + the node's _image_batch_to_lq + flashvsr_sm89_ops.render_tiled) on a real clip, so the numbers sit next to tiled_render.json's render-only times",
+    "hardware": "RTX 4090 24 GB (container), 85-frame clip, ops pack on (fp8_linears=300, lcsa=bsa)",
+    "4k": {
+      "canvas": [
+        3840,
+        2048
+      ],
+      "frames": 89,
+      "tiles": 5,
+      "prep_old_s": 17.15,
+      "prep_new_s": 6.12,
+      "prep_speedup": 2.8,
+      "render_tiled_s": 67.3,
+      "render_tiled_peak_gib": 19.96,
+      "node_e2e_old_s": 84.5,
+      "node_e2e_new_s": 73.4
+    },
+    "2k": {
+      "canvas": [
+        2560,
+        1408
+      ],
+      "frames": 89,
+      "tiles": 2,
+      "prep_old_s": 5.39,
+      "prep_new_s": 2.58,
+      "prep_speedup": 2.09,
+      "render_tiled_s": 24.8,
+      "render_tiled_peak_gib": 18.98,
+      "node_e2e_old_s": 30.2,
+      "node_e2e_new_s": 27.4,
+      "untiled_arm": "skipped: the untiled 2K render does not fit a 24 GB card"
+    },
+    "note": "render_tiled is untouched, so tiled_render.json's numbers and every ratio in the README stay valid; the gain shows up as node end-to-end time."
+  }
 }

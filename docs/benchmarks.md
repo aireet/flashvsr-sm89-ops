@@ -45,7 +45,7 @@ Reference results (same session, RTX 4090 D): `headtohead_orig.json` 7749/8468/8
 
 | Change | Result file | Headline |
 |---|---|---|
-| Input preparation: Pillow x4 bicubic on a thread pool + fused per-frame conversion | `input_prep_ab.json` | 81 frames → 4K canvas: 8.63 → 2.57 s (3.4×), returned LQ sha256 unchanged |
+| Input preparation: Pillow x4 bicubic on a thread pool + fused per-frame conversion | `input_prep_ab.json` | 85 frames → 4K canvas: 17.2 → 6.1 s (2.8× on a 4090), returned LQ sha256 unchanged; node e2e 84.5 → 73.4 s |
 | Output `[-1,1] → [0,1]` conversion in place | `input_prep_ab.json` | 1.01 GiB canvas: 0.100 → 0.049 s (2.0×), bit-identical |
 | Tiling blend micro-optimization (one less host temp) | `tiling_blend_ab.json` | **rejected** — median +2–5% slower, bit-identical; `render_tiled` left unchanged |
 
