@@ -1,0 +1,19 @@
+{
+  "what": "One-machine node-to-node A/B at a 1408x768 canvas: the official example's path (its own prepare_input_tensor + the stock pipeline) against this repo's node path (comfyui/nodes.py prep + the sm89 ops pack).",
+  "method": "same 85-frame 352x192 clip (F=89, 1 tile), one RTX 4090 container, one process per arm, prep and render timed separately; ops arm runs flashvsr_sm89_ops.enable(pipe).",
+  "stock": {
+    "prep_s": 2.26,
+    "render_s": 8.62,
+    "total_s": 10.88,
+    "peak_gib": 13.11
+  },
+  "ops": {
+    "prep_s": 1.29,
+    "render_s": 6.84,
+    "total_s": 8.12,
+    "peak_gib": 11.31
+  },
+  "pipeline_only_speedup": 1.26,
+  "node_end_to_end_speedup": 1.34,
+  "note": "The 1.30x headline in README is the pipeline-only ratio (pr2_harness/headtohead JSONs). Counting the input preparation, which both paths run per request, moves it to 1.34x on this run."
+}

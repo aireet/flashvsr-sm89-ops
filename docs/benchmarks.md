@@ -48,6 +48,7 @@ Reference results (same session, RTX 4090 D): `headtohead_orig.json` 7749/8468/8
 | Input preparation: Pillow x4 bicubic on a thread pool + fused per-frame conversion | `input_prep_ab.json` | 85 frames → 4K canvas: 17.2 → 6.1 s (2.8× on a 4090), returned LQ sha256 unchanged; node e2e 84.5 → 73.4 s |
 | Output `[-1,1] → [0,1]` conversion in place | `input_prep_ab.json` | 1.01 GiB canvas: 0.100 → 0.049 s (2.0×), bit-identical |
 | Tiling blend micro-optimization (one less host temp) | `tiling_blend_ab.json` | **rejected** — median +2–5% slower, bit-identical; `render_tiled` left unchanged |
+| Node end-to-end vs the official example (prep + render, one host) | `node_e2e_ab.json` | 1.34× (10.88 → 8.12 s); pipeline-only 1.26× on the same run |
 
 All three are host-side only: no kernel, no numerics change (bit-identical outputs verified by sha256).
 
