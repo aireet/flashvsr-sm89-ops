@@ -25,7 +25,11 @@ Tiling is a memory technique and the operators are a speed technique — they st
 | **4K · 3840×2048 · 85 frames** on a 24 GB card | **19.96 GiB peak, ~61 s** — untiled: OOM at 44.8 GiB | [`tiled_render.json`](benchmarks/tiled_render.json) |
 | **Speed vs official pipeline** @ 1408×768 | **1.30×** end-to-end (11.5 → 15.0 FPS); 1.26–1.28× on a pristine re-run | [`headtohead_*.json`](benchmarks/), [`pr2_harness_*.json`](benchmarks/) |
 | **Speedup retained under tiling** (2K A/B) | **1.24×** — and FP8 trims another ~1.3 GiB off the tiled peak | [`tiled_ops_ab.json`](benchmarks/tiled_ops_ab.json) |
+| **Node input preparation** (81 frames → 4K canvas) | **8.63 s → 2.57 s** — Pillow x4 bicubic on a thread pool + fused per-frame conversion, output bit-identical | [`input_prep_ab.json`](benchmarks/input_prep_ab.json) |
 | **Quality** | LPIPS 0.011–0.012 vs official outputs (gate ≤ 0.05); tile seams below global noise | [`quality_cmp.json`](benchmarks/quality_cmp.json), [`tiled_render.json`](benchmarks/tiled_render.json) |
+
+
+*The 4K wall time above predates the input-preparation change and should be regenerated with `comfyui/bench_tiled.py` on the rig; the moved part is the node's input preparation (see [`input_prep_ab.json`](benchmarks/input_prep_ab.json)).*
 
 ## Use it in ComfyUI
 

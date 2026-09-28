@@ -12,6 +12,7 @@ is deferred until the node runs.
 """
 import contextlib
 import os
+from concurrent.futures import ThreadPoolExecutor
 import subprocess
 import sys
 import types
@@ -253,7 +254,10 @@ def _image_batch_to_lq(images, target_h=None, multiple=128):
     output height (the official node's target_resolution contract).
     """
     from PIL import Image
-    arr = (images.clamp(0, 1).cpu().numpy() * 255.0).round().astype(np.uint8)
+    # Scale and round on the tensor's own device and download uint8 once; the eager
+    # form shipped float32 to the host and then ran *255 / round / astype over the
+    # whole batch there. clamp() copies first, so the rest can mutate in place.
+    arr = images.clamp(0, 1).mul_(255).round_().to(torch.uint8).cpu().numpy()
     w0, h0 = arr.shape[2], arr.shape[1]
 
     # the model always runs 4x on its (bicubic-upsampled) input; with
@@ -282,17 +286,33 @@ def _image_batch_to_lq(images, target_h=None, multiple=128):
     F = _largest_8n1_leq(len(idx))
     idx = idx[:F]
 
-    frames = []
-    for i in idx:
+    # The x4 bicubic is the bulk of this function and Pillow releases the GIL inside
+    # resize(), so the frames — independent of each other — go through a small thread
+    # pool. The results are consumed in order, per-frame values and metadata are
+    # unchanged, and only ~max_workers upscaled frames are alive at once.
+    def _upscale(i):
         img = Image.fromarray(arr[i]).convert("RGB")
         sW, sH = int(round(w0 * scale)), int(round(h0 * scale))
         up = img.resize((sW, sH), Image.BICUBIC)
         l, t = (sW - tW) // 2, (sH - tH) // 2
-        up = up.crop((l, t, l + tW, t + tH))
-        t32 = torch.from_numpy(np.asarray(up, np.uint8)).float().permute(2, 0, 1)
-        # stays in CPU RAM: render_tiled uploads one tile's crop at a time,
-        # so a 4K canvas never parks 4 GiB of LQ on the GPU
-        frames.append((t32 / 255.0 * 2.0 - 1.0).to(dtype=torch.bfloat16))
+        return up.crop((l, t, l + tW, t + tH))
+
+    workers = max(1, min(8, os.cpu_count() or 1, len(idx)))
+    pool = ThreadPoolExecutor(max_workers=workers) if workers > 1 else None
+    try:
+        ups = pool.map(_upscale, idx) if pool is not None else map(_upscale, idx)
+        frames = []
+        for up in ups:
+            t32 = torch.from_numpy(np.asarray(up, np.uint8)).to(torch.float32)
+            # stays in CPU RAM: render_tiled uploads one tile's crop at a time,
+            # so a 4K canvas never parks 4 GiB of LQ on the GPU.
+            # In-place arithmetic on the contiguous HWC buffer with one permute at the
+            # end: the eager form allocated five full-size temps per frame.
+            frames.append(t32.div_(255.0).mul_(2.0).sub_(1.0)
+                          .to(dtype=torch.bfloat16).permute(2, 0, 1))
+    finally:
+        if pool is not None:
+            pool.shutdown()
     vid = torch.stack(frames, 0).permute(1, 0, 2, 3).unsqueeze(0)  # 1 C F H W
     return vid, tH, tW, F
 
@@ -399,7 +419,10 @@ class FlashVSRUpscale(io.ComfyNode):
                 f"try again.") from None
         _release_gpu(pipe)
         # pipeline contract: [C,F,H,W] in [-1,1] -> ComfyUI IMAGE [F,H,W,C] 0..1
-        out = ((video_t.float().clamp(-1, 1) + 1.0) * 0.5).permute(1, 2, 3, 0).cpu()
+        # video_t is render_tiled's own output, so this runs in place: the eager form
+        # allocated two extra canvas-sized fp32 temporaries (clamp, +1) before the
+        # final multiply produced the result.
+        out = video_t.clamp_(-1, 1).add_(1.0).mul_(0.5).permute(1, 2, 3, 0).cpu()
         del LQ
         torch.cuda.empty_cache()
 

@@ -1,0 +1,27 @@
+{
+  "what": "REJECTED micro-optimization of flashvsr_sm89_ops/tiling.py::render_tiled (one host buffer per tile, in-place mul/add, cached weight map). Output is bit-identical but it is consistently slower, so render_tiled was left untouched.",
+  "method": "GPU fake pipe returning a cached CUDA tensor of each tile crop, so the measured time is the download + blend only (no model work). Case 2560x1408, 85 frames, 2 tiles. 8 render_tiled rounds per process; two processes per arm in alternating order (head, patched, head, patched). sha256 over the output bytes.",
+  "case": "2560x1408 x 85 frames, 2 tiles",
+  "arm_head": {
+    "median_s": [
+      4.406,
+      4.271
+    ],
+    "min_s": [
+      3.867,
+      3.86
+    ]
+  },
+  "arm_patched": {
+    "median_s": [
+      4.458,
+      4.496
+    ],
+    "min_s": [
+      4.121,
+      4.14
+    ]
+  },
+  "bit_identical": true,
+  "why_rejected": "HEAD wins every round (median +2-5% for the patch, min +6%); the temporary it saves is smaller than this host's run-to-run spread (+-10%). Recorded because a negative result with clean evidence is a result."
+}

@@ -40,6 +40,17 @@ Reference results (same session, RTX 4090 D): `headtohead_orig.json` 7749/8468/8
 
 > The op-level scripts live in the upstream workspace's `eval/` directory rather than this package — the JSONs here are the frozen evidence. Copying the harnesses in is a welcome first contribution (see CONTRIBUTING.md).
 
+
+## Node-side host paths (ComfyUI node, no kernels)
+
+| Change | Result file | Headline |
+|---|---|---|
+| Input preparation: Pillow x4 bicubic on a thread pool + fused per-frame conversion | `input_prep_ab.json` | 81 frames → 4K canvas: 8.63 → 2.57 s (3.4×), returned LQ sha256 unchanged |
+| Output `[-1,1] → [0,1]` conversion in place | `input_prep_ab.json` | 1.01 GiB canvas: 0.100 → 0.049 s (2.0×), bit-identical |
+| Tiling blend micro-optimization (one less host temp) | `tiling_blend_ab.json` | **rejected** — median +2–5% slower, bit-identical; `render_tiled` left unchanged |
+
+All three are host-side only: no kernel, no numerics change (bit-identical outputs verified by sha256).
+
 ## Quality gate (run after ANY operator change)
 
 Generate outputs for ≥ 2 clips with the patched pipeline, compare against official-pipeline outputs:

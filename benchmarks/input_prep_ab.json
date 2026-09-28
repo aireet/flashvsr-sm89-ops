@@ -1,0 +1,26 @@
+{
+  "what": "A/B of the ComfyUI node's input preparation (_image_batch_to_lq, 81 frames -> 3840x2048 canvas LQ) with the per-frame Pillow x4 bicubic pooled and the per-frame conversion fused. Pure host code: no GPU involved.",
+  "method": "identical input tensor torch.rand(81, 512, 960, 3) (target_h=2048); arm 'serial' is the pre-change implementation, arm 'pooled' is HEAD. sha256 over the returned bf16 LQ bytes proves bit-identity. min of 2 timed runs per arm; container 48-core CPU, torch 2.14.0+cpu.",
+  "arm_serial": {
+    "wall_s": 8.63,
+    "workers": 1
+  },
+  "arm_pooled": {
+    "wall_s": 2.57,
+    "workers": 8,
+    "speedup": 3.36
+  },
+  "bit_identical": true,
+  "sha256_12": "9b722369fdce",
+  "environment": "container, CPU-only (Pillow resize + tensor conversion); workers = min(8, cpu_count, frames)",
+  "also_measured": {
+    "output_conversion": {
+      "what": "execute(): [-1,1] -> [0,1] canvas conversion on a 1.01 GiB fp32 canvas (3x25x1408x2560)",
+      "arm_eager_s": 0.1,
+      "arm_inplace_s": 0.049,
+      "speedup": 2.04,
+      "bit_identical": true
+    }
+  },
+  "stale_number": "README's 4K e2e row (benchmarks/tiled_render.json, ~61 s) was recorded before this change; regenerate it with comfyui/bench_tiled.py on the 4090 rig \u2014 the moved part is exactly this node-side input preparation."
+}
