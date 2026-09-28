@@ -58,5 +58,16 @@
       "untiled_arm": "skipped: the untiled 2K render does not fit a 24 GB card"
     },
     "note": "render_tiled is untouched, so tiled_render.json's numbers and every ratio in the README stay valid; the gain shows up as node end-to-end time."
+  },
+  "official_vs_node_prep": {
+    "what": "Official FlashVSR input preparation vs this repo's node prep, same clip and canvas",
+    "clip": "85 frames, 352x192 source -> 1408x768 canvas (F=89)",
+    "method": "official arm calls the official example's prepare_input_tensor(path, scale=4, bf16, cuda); node arms call comfyui/nodes.py::_image_batch_to_lq(target_h=768). min of 2 runs; RTX 4090 container.",
+    "official_s": 1.82,
+    "node_old_s": 1.84,
+    "node_new_s": 1.03,
+    "derived_node_end_to_end": {
+      "note": "Ratio if the node paths are compared end to end (prep + render), using this repo's own render JSONs: official 1.82 + 7.745 s (headtohead_orig.json stock @1408x768) = 9.57 s vs node 1.03 + 5.93 s (pr2_harness ops) = 6.96 s => ~1.37x, against the pipeline-only 1.30x. Derived, not a single-machine run: regenerate the harnesses on one host before promoting it to a headline."
+    }
   }
 }
